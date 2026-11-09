@@ -1,14 +1,20 @@
 # QuixelCEBridge
 
-Live-link plugin for Quixel Bridge → CRYENGINE 5.7 Sandbox.
+Live-link plugin for Quixel Bridge → CRYENGINE 5.7 Sandbox — **not yet
+field-tested**, treat it as a work in progress.
+
 Modeled after Blender's MSPlugin, it converts Megascans assets pushed from
 Bridge into native CRYENGINE formats: textures → `_diff/_ddna/_spec/…` DDS,
 meshes → CGF (with LODs), materials → `.mtl` (Illum / Vegetation shader),
 then places the meshes in the level / assigns materials to the selection.
+Megascans downloads can also be imported manually as an export **JSON** or
+the **.zip** you get from Bridge, without Bridge running.
 
-Pure Python (3.7), no build step required. Texture conversion uses the bundled
-`texproc.exe` / `converter.exe` (CryEngineTextureProcessor CLI); mesh and DDS
-compilation uses the engine's `rc.exe`.
+Pure Python (3.7), no build step required. Texture conversion is powered
+by the core of
+[Cryengine-Texture-Processor](https://github.com/z060142/Cryengine-Texture-Processor)
+(bundled here as `texproc.exe` / `converter.exe`); mesh and DDS compilation
+uses the engine's `rc.exe`.
 
 ---
 
