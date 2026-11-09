@@ -1,0 +1,14 @@
+<AssetMetadata version="0" type="Mesh" guid="aa072917-68e6-8d5c-9205-efc461c75ff4" source="Var1_LOD0.fbx">
+ <Files>
+  <File path="Var1_LOD0_manual.cgf"/>
+ </Files>
+ <Details>
+  <Detail name="materialCount">3</Detail>
+  <Detail name="triangleCount">146</Detail>
+  <Detail name="vertexCount">157</Detail>
+  <Detail name="16BitPrecision">false</Detail>
+ </Details>
+ <Dependencies>
+  <Path usageCount="1">./Var1_LOD0.mtl</Path>
+ </Dependencies>
+</AssetMetadata>

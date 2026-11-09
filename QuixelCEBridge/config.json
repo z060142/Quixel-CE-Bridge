@@ -1,0 +1,44 @@
+{
+    "host": "127.0.0.1",
+    "port": 24981,
+    "auto_start": true,
+    "assets_root": "",
+    "output_subdir": "Objects/Megascans",
+    "rc_exe": "",
+    "texproc_exe": "",
+    "converter_exe": "",
+    "texture": {
+        "output_resolution": "original",
+        "normal_is_opengl": true,
+        "bake_ao_into_diffuse": false,
+        "prefer_exr_displacement": false,
+        "generate_dds": true,
+        "delete_tif_after_dds": false,
+        "rc_parallel": 0,
+        "texproc_settings": {}
+    },
+    "geometry": {
+        "import_lods": true,
+        "physicalize": "no",
+        "forward_up_axes": "",
+        "unit_size": "",
+        "scale": null,
+        "merge_all_nodes": false
+    },
+    "material": {
+        "shader": "Illum",
+        "plant_shader": "Illum",
+        "surface_type": "",
+        "surface_pom": false,
+        "pom_displacement": 0.025,
+        "alpha_test": 0.5
+    },
+    "placement": {
+        "place_in_level": false,
+        "spawn_distance": 3.0,
+        "variation_spacing": 1.5,
+        "apply_surface_to_selection": true,
+        "select_new_objects": true
+    },
+    "keep_work_files": false
+}

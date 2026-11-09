@@ -1,0 +1,236 @@
+[
+ {
+  "id": "abc123",
+  "name": "Mossy Rock Big",
+  "type": "3d",
+  "path": "E:\\coding4\\QuixelBridge_CE\\_test\\megascans\\3d_rock_abc123",
+  "category": "Rock",
+  "categories": [
+   "3d",
+   "rock"
+  ],
+  "tags": [
+   "rock"
+  ],
+  "activeLOD": "lod0",
+  "minLOD": "lod5",
+  "workflow": "specular",
+  "components": [
+   {
+    "type": "albedo",
+    "path": "E:\\coding4\\QuixelBridge_CE\\_test\\megascans\\3d_rock_abc123\\abc123_2K_Albedo.jpg",
+    "format": "jpg",
+    "name": "abc123_2K_Albedo.jpg"
+   },
+   {
+    "type": "normal",
+    "path": "E:\\coding4\\QuixelBridge_CE\\_test\\megascans\\3d_rock_abc123\\abc123_2K_Normal.jpg",
+    "format": "jpg",
+    "name": "abc123_2K_Normal.jpg"
+   },
+   {
+    "type": "roughness",
+    "path": "E:\\coding4\\QuixelBridge_CE\\_test\\megascans\\3d_rock_abc123\\abc123_2K_Roughness.jpg",
+    "format": "jpg",
+    "name": "abc123_2K_Roughness.jpg"
+   },
+   {
+    "type": "ao",
+    "path": "E:\\coding4\\QuixelBridge_CE\\_test\\megascans\\3d_rock_abc123\\abc123_2K_AO.jpg",
+    "format": "jpg",
+    "name": "abc123_2K_AO.jpg"
+   },
+   {
+    "type": "displacement",
+    "path": "E:\\coding4\\QuixelBridge_CE\\_test\\megascans\\3d_rock_abc123\\abc123_2K_Displacement.jpg",
+    "format": "jpg",
+    "name": "abc123_2K_Displacement.jpg"
+   }
+  ],
+  "meshList": [
+   {
+    "format": "fbx",
+    "path": "E:\\coding4\\QuixelBridge_CE\\_test\\megascans\\3d_rock_abc123\\abc123_LOD0.fbx",
+    "name": "abc123_LOD0.fbx"
+   }
+  ],
+  "lodList": [
+   {
+    "lod": "lod0",
+    "format": "fbx",
+    "path": "E:\\coding4\\QuixelBridge_CE\\_test\\megascans\\3d_rock_abc123\\abc123_LOD0.fbx"
+   },
+   {
+    "lod": "lod1",
+    "format": "fbx",
+    "path": "E:\\coding4\\QuixelBridge_CE\\_test\\megascans\\3d_rock_abc123\\abc123_LOD1.fbx"
+   }
+  ],
+  "components-billboard": []
+ },
+ {
+  "id": "xyz",
+  "name": "Metal Plate Floor",
+  "type": "surface",
+  "path": "E:\\coding4\\QuixelBridge_CE\\_test\\megascans\\surface_xyz",
+  "category": "Metal",
+  "categories": [
+   "surface",
+   "metal"
+  ],
+  "tags": [],
+  "activeLOD": "high",
+  "minLOD": "",
+  "workflow": "metalness",
+  "components": [
+   {
+    "type": "albedo",
+    "path": "E:\\coding4\\QuixelBridge_CE\\_test\\megascans\\surface_xyz\\xyz_2K_Albedo.jpg",
+    "format": "jpg",
+    "name": "xyz_2K_Albedo.jpg"
+   },
+   {
+    "type": "normal",
+    "path": "E:\\coding4\\QuixelBridge_CE\\_test\\megascans\\surface_xyz\\xyz_2K_Normal.jpg",
+    "format": "jpg",
+    "name": "xyz_2K_Normal.jpg"
+   },
+   {
+    "type": "roughness",
+    "path": "E:\\coding4\\QuixelBridge_CE\\_test\\megascans\\surface_xyz\\xyz_2K_Roughness.jpg",
+    "format": "jpg",
+    "name": "xyz_2K_Roughness.jpg"
+   },
+   {
+    "type": "ao",
+    "path": "E:\\coding4\\QuixelBridge_CE\\_test\\megascans\\surface_xyz\\xyz_2K_AO.jpg",
+    "format": "jpg",
+    "name": "xyz_2K_AO.jpg"
+   },
+   {
+    "type": "displacement",
+    "path": "E:\\coding4\\QuixelBridge_CE\\_test\\megascans\\surface_xyz\\xyz_2K_Displacement.jpg",
+    "format": "jpg",
+    "name": "xyz_2K_Displacement.jpg"
+   },
+   {
+    "type": "metalness",
+    "path": "E:\\coding4\\QuixelBridge_CE\\_test\\megascans\\surface_xyz\\xyz_2K_Metalness.jpg",
+    "format": "jpg",
+    "name": "xyz_2K_Metalness.jpg"
+   }
+  ],
+  "meshList": [],
+  "lodList": []
+ },
+ {
+  "id": "p1",
+  "name": "Wild Fern",
+  "type": "3dplant",
+  "path": "E:\\coding4\\QuixelBridge_CE\\_test\\megascans\\plant_p1",
+  "category": "Fern",
+  "categories": [
+   "3dplant"
+  ],
+  "tags": [
+   "fern"
+  ],
+  "activeLOD": "lod0",
+  "minLOD": "lod4",
+  "workflow": "specular",
+  "components": [
+   {
+    "type": "albedo",
+    "path": "E:\\coding4\\QuixelBridge_CE\\_test\\megascans\\plant_p1\\Textures\\Atlas\\p1_2K_Albedo.jpg",
+    "format": "jpg",
+    "name": "p1_2K_Albedo.jpg"
+   },
+   {
+    "type": "normal",
+    "path": "E:\\coding4\\QuixelBridge_CE\\_test\\megascans\\plant_p1\\Textures\\Atlas\\p1_2K_Normal.jpg",
+    "format": "jpg",
+    "name": "p1_2K_Normal.jpg"
+   },
+   {
+    "type": "roughness",
+    "path": "E:\\coding4\\QuixelBridge_CE\\_test\\megascans\\plant_p1\\Textures\\Atlas\\p1_2K_Roughness.jpg",
+    "format": "jpg",
+    "name": "p1_2K_Roughness.jpg"
+   },
+   {
+    "type": "opacity",
+    "path": "E:\\coding4\\QuixelBridge_CE\\_test\\megascans\\plant_p1\\Textures\\Atlas\\p1_2K_Opacity.jpg",
+    "format": "jpg",
+    "name": "p1_2K_Opacity.jpg"
+   }
+  ],
+  "components-billboard": [
+   {
+    "type": "albedo",
+    "path": "E:\\coding4\\QuixelBridge_CE\\_test\\megascans\\plant_p1\\Textures\\Billboard\\p1_Billboard_2K_Albedo.jpg",
+    "format": "jpg",
+    "name": "p1_Billboard_2K_Albedo.jpg"
+   },
+   {
+    "type": "normal",
+    "path": "E:\\coding4\\QuixelBridge_CE\\_test\\megascans\\plant_p1\\Textures\\Billboard\\p1_Billboard_2K_Normal.jpg",
+    "format": "jpg",
+    "name": "p1_Billboard_2K_Normal.jpg"
+   },
+   {
+    "type": "opacity",
+    "path": "E:\\coding4\\QuixelBridge_CE\\_test\\megascans\\plant_p1\\Textures\\Billboard\\p1_Billboard_2K_Opacity.jpg",
+    "format": "jpg",
+    "name": "p1_Billboard_2K_Opacity.jpg"
+   }
+  ],
+  "meshList": [
+   {
+    "format": "fbx",
+    "path": "E:\\coding4\\QuixelBridge_CE\\_test\\megascans\\plant_p1\\Var1_LOD0.fbx"
+   },
+   {
+    "format": "fbx",
+    "path": "E:\\coding4\\QuixelBridge_CE\\_test\\megascans\\plant_p1\\Var2_LOD0.fbx"
+   }
+  ],
+  "lodList": [
+   {
+    "lod": "lod0",
+    "variation": 1,
+    "format": "fbx",
+    "path": "E:\\coding4\\QuixelBridge_CE\\_test\\megascans\\plant_p1\\Var1_LOD0.fbx"
+   },
+   {
+    "lod": "lod1",
+    "variation": 1,
+    "format": "fbx",
+    "path": "E:\\coding4\\QuixelBridge_CE\\_test\\megascans\\plant_p1\\Var1_LOD1.fbx"
+   },
+   {
+    "lod": "lod4",
+    "variation": 1,
+    "format": "fbx",
+    "path": "E:\\coding4\\QuixelBridge_CE\\_test\\megascans\\plant_p1\\Var1_LOD4.fbx"
+   },
+   {
+    "lod": "lod0",
+    "variation": 2,
+    "format": "fbx",
+    "path": "E:\\coding4\\QuixelBridge_CE\\_test\\megascans\\plant_p1\\Var2_LOD0.fbx"
+   },
+   {
+    "lod": "lod1",
+    "variation": 2,
+    "format": "fbx",
+    "path": "E:\\coding4\\QuixelBridge_CE\\_test\\megascans\\plant_p1\\Var2_LOD1.fbx"
+   },
+   {
+    "lod": "lod4",
+    "variation": 2,
+    "format": "fbx",
+    "path": "E:\\coding4\\QuixelBridge_CE\\_test\\megascans\\plant_p1\\Var2_LOD4.fbx"
+   }
+  ]
+ }
+]

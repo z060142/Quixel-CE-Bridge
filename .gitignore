@@ -1,0 +1,34 @@
+# ============================================================
+# QuixelCEBridge repo — keep: plugin source (+ bundled bin CLIs),
+# _test scripts & small fixtures. Everything else is reference
+# material, build output or generated test output.
+# ============================================================
+
+# --- Python runtime artifacts (regenerated on import)
+__pycache__/
+*.pyc
+*.log
+
+# --- plugin runtime dumps (contain local absolute paths)
+last_payload.json
+
+# --- generated e2e test output (fake project: CGF/DDS/TIF/MTL...)
+_test/gameproject/
+_test/*.log
+
+# --- local test scratch (payloads captured from live runs)
+_test/run_*.bak
+
+# --- third-party reference material, not our code
+MSPlugin/
+Python Bridge Manual/
+Cryengine/
+CryEngineTextureProcessor_source/
+CryEngineTextureProcessor_build/
+
+# --- editor / OS noise
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+desktop.ini
