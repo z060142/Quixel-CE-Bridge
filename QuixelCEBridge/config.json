@@ -1,6 +1,7 @@
 {
     "host": "127.0.0.1",
     "port": 24981,
+    "fab_port": 31337,
     "auto_start": true,
     "assets_root": "",
     "output_subdir": "Objects/Megascans",

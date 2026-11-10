@@ -12,6 +12,9 @@ DEFAULTS = {
     # --- Bridge socket (Quixel Bridge > Export Settings > Custom Socket Export) ---
     "host": "127.0.0.1",
     "port": 24981,
+    # Second listen port = Fab's "Custom (Socket Port)" export default, so the
+    # launcher works without changing anything. 0 = listen on `port` only.
+    "fab_port": 31337,
     "auto_start": True,
 
     # --- Paths (empty = auto-detect) ---

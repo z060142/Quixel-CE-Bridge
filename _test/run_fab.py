@@ -103,9 +103,10 @@ def main():
     ctrl.settings.set("assets_root", os.path.join(HERE, "gameproject", "Assets"))
     ctrl.settings.set("rc_exe", r"S:\Crytek\cryengine-57-lts\5.7.1\Tools\rc\rc.exe")
     ctrl.settings.set("port", 24998)
+    ctrl.settings.set("fab_port", 24996)
     ctrl.settings.set("keep_work_files", True)
     assert ctrl.start_server()
-    port = 24998
+    port = 24996   # Fab's "Custom (Socket Port)" target — the launcher sends here
 
     send(port, fab_rock("fabrock"))
     send(port, fab_surface())

@@ -44,6 +44,9 @@ class BridgePanel(QtWidgets.QWidget):
         form = QtWidgets.QFormLayout(box)
         self.port = QtWidgets.QSpinBox()
         self.port.setRange(1024, 65535)
+        self.fab_port = QtWidgets.QSpinBox()
+        self.fab_port.setRange(0, 65535)
+        self.fab_port.setSpecialValueText("off (port only)")
         self.assets_root = QtWidgets.QLineEdit()
         self.assets_root.setPlaceholderText("auto: sandbox.general.get_game_folder()")
         browse = QtWidgets.QPushButton("...")
@@ -70,6 +73,7 @@ class BridgePanel(QtWidgets.QWidget):
         self.chk_pom = QtWidgets.QCheckBox("Surfaces: parallax occlusion mapping")
         self.chk_keep = QtWidgets.QCheckBox("Keep work files (debug)")
         form.addRow("Port", self.port)
+        form.addRow("Fab port", self.fab_port)
         form.addRow("Assets root", root_row)
         form.addRow("Output folder", self.subdir)
         form.addRow("rc.exe", self.rc_exe)
@@ -110,6 +114,7 @@ class BridgePanel(QtWidgets.QWidget):
     def _load(self):
         s = self.ctrl.settings
         self.port.setValue(int(s.get("port")))
+        self.fab_port.setValue(int(s.get("fab_port") or 0))
         self.assets_root.setText(s.get("assets_root") or "")
         self.subdir.setText(s.get("output_subdir") or "")
         self.rc_exe.setText(s.get("rc_exe") or "")
@@ -133,8 +138,10 @@ class BridgePanel(QtWidgets.QWidget):
 
     def _save(self):
         s = self.ctrl.settings
-        port_changed = int(s.get("port")) != self.port.value()
+        port_changed = (int(s.get("port")) != self.port.value() or
+                        int(s.get("fab_port") or 0) != self.fab_port.value())
         s.set("port", self.port.value())
+        s.set("fab_port", self.fab_port.value())
         s.set("assets_root", self.assets_root.text().strip())
         s.set("output_subdir", self.subdir.text().strip() or "Objects/Megascans")
         s.set("rc_exe", self.rc_exe.text().strip())
@@ -190,7 +197,10 @@ class BridgePanel(QtWidgets.QWidget):
         self.btn_listen.setText("Stop listening" if self.ctrl.listening else "Start listening")
 
     def _tick(self):
-        listening = "listening on %s" % self.ctrl.settings.get("port") if self.ctrl.listening else "not listening"
+        fab_port = self.ctrl.settings.get("fab_port") or 0
+        listening = ("listening on %s" % self.ctrl.settings.get("port")) if self.ctrl.listening else "not listening"
+        if self.ctrl.listening and fab_port:
+            listening += " + %s (Fab)" % fab_port
         pending = self.ctrl.pending
         self.status.setText("%s | %s%s" % (listening, self.ctrl.status, (" | pending %d" % pending) if pending else ""))
         for seq, level, text in logger.lines_since(self._log_seq):

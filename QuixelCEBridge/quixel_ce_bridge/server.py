@@ -37,9 +37,10 @@ def split_json_documents(text):
 
 
 class BridgeServer(object):
-    def __init__(self, host, port, on_payload, plugin_version=""):
+    def __init__(self, host, port, on_payload, plugin_version="", fab_port=0):
         self.host = host
         self.port = int(port)
+        self.fab_port = int(fab_port or 0)   # Fab's custom socket export default port
         self.on_payload = on_payload
         self.plugin_version = str(plugin_version or "")
         self._sockets = []
@@ -53,32 +54,44 @@ class BridgeServer(object):
     def start(self):
         if self.running:
             return True
-        addresses = [(socket.AF_INET, self.host)]
-        if self.host in ("127.0.0.1", "localhost") and socket.has_ipv6:
-            addresses.append((socket.AF_INET6, "::1"))   # Bridge may resolve localhost to ::1
-        for family, host in addresses:
+        ports = [self.port]
+        if self.fab_port and self.fab_port != self.port:
+            ports.append(self.fab_port)
+        targets = []
+        for port in ports:
+            primary = port == self.port
+            targets.append((socket.AF_INET, self.host, port, primary))
+            if self.host in ("127.0.0.1", "localhost") and socket.has_ipv6:
+                targets.append((socket.AF_INET6, "::1", port, primary))   # apps may resolve localhost to ::1
+        bound = []
+        for family, host, port, primary in targets:
             sock = socket.socket(family, socket.SOCK_STREAM)
             try:
                 if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
                     sock.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
-                sock.bind((host, self.port))
+                sock.bind((host, port))
                 sock.listen(5)
                 sock.settimeout(1.0)
             except OSError as error:
                 sock.close()
+                if not primary:
+                    logger.warning("Fab port %d unavailable (%s); set the socket port in Fab's export "
+                                   "settings to %d or change fab_port in config.json" % (port, error, self.port))
+                    continue
                 if family == socket.AF_INET:
                     logger.error("cannot listen on %s:%d (%s). Is another Sandbox/Blender using it?"
-                                 % (host, self.port, error))
+                                 % (host, port, error))
                     self.stop()
                     return False
                 continue
             self._sockets.append(sock)
+            bound.append("%s:%d" % (host, port))
         self._running.set()
         for sock in self._sockets:
             thread = threading.Thread(target=self._accept_loop, args=(sock,), name="qceb-listen", daemon=True)
             thread.start()
             self._threads.append(thread)
-        logger.info("listening for Quixel Bridge / Fab on %s:%d" % (self.host, self.port))
+        logger.info("listening for Quixel Bridge / Fab on %s" % ", ".join(bound))
         return True
 
     def stop(self):

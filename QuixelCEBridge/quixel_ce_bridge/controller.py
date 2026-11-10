@@ -67,7 +67,8 @@ class Controller(object):
             "converter.exe": snap.get("_runtime.converter_exe") or "NOT FOUND",
             "assets root": snap.get("_runtime.assets_root") or "NOT FOUND",
             "output": os.path.join(snap.get("_runtime.assets_root") or "?", snap.get("output_subdir")),
-            "listening": "%s:%s" % (snap.get("host"), snap.get("port")) if self.listening else "no",
+            "listening": ("%s:%s" % (snap.get("host"), snap.get("port")) if self.listening else "no") +
+                         ((" (+ %s for Fab)" % snap.get("fab_port")) if self.listening and snap.get("fab_port") else ""),
         }
 
     # ------------------------------------------------------------------ server
@@ -78,7 +79,8 @@ class Controller(object):
     def start_server(self):
         self.stop_server()
         self.server = BridgeServer(self.settings.get("host"), self.settings.get("port"),
-                                   self._incoming.put, plugin_version=VERSION)
+                                   self._incoming.put, plugin_version=VERSION,
+                                   fab_port=self.settings.get("fab_port"))
         ok = self.server.start()
         self._notify("server", ok)
         return ok

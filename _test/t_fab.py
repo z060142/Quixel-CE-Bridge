@@ -218,7 +218,8 @@ def test_old_formats_regress():
 
 def test_server_protocol():
     received = []
-    server = BridgeServer("127.0.0.1", 24997, received.append, plugin_version="9.9.9")
+    server = BridgeServer("127.0.0.1", 24997, received.append, plugin_version="9.9.9",
+                          fab_port=24996)
     check("server: start", server.start() is True)
     try:
         # 1) ping -> version reply, then the payload on the SAME connection
@@ -240,13 +241,24 @@ def test_server_protocol():
         while len(received) < 2 and time.time() < deadline:
             time.sleep(0.05)
         check("server: null-terminated payload", len(received) == 2)
-        # 3) Bye Fab does NOT stop the listener
-        client = socket.create_connection(("127.0.0.1", 24997), timeout=5)
+        # 3) same flow on the Fab port
+        client = socket.create_connection(("127.0.0.1", 24996), timeout=5)
+        client.sendall(b"ping")
+        reply = client.recv(200)
+        check("server: fab port ping reply", reply == b"{'plugin_version': '9.9.9'}", reply)
+        client.sendall(json.dumps(fab_rock()).encode("utf-8"))
+        client.close()
+        deadline = time.time() + 5
+        while len(received) < 3 and time.time() < deadline:
+            time.sleep(0.05)
+        check("server: fab port payload", len(received) == 3)
+        # 4) Bye Fab does NOT stop the listener (either port)
+        client = socket.create_connection(("127.0.0.1", 24996), timeout=5)
         client.sendall(b"Bye Fab")
         client.close()
         time.sleep(0.5)
         check("server: still running after Bye Fab", server.running is True)
-        # 4) Bye Megascans still stops it
+        # 5) Bye Megascans still stops it (closes all ports)
         client = socket.create_connection(("127.0.0.1", 24997), timeout=5)
         client.sendall(b"Bye Megascans")
         client.close()
@@ -258,6 +270,29 @@ def test_server_protocol():
         server.stop()
 
 
+def test_server_fab_port_taken():
+    """A busy Fab port must not break the main Bridge port."""
+    blocker = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    blocker.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    blocker.bind(("127.0.0.1", 24996))
+    blocker.listen(1)
+    received = []
+    server = BridgeServer("127.0.0.1", 24997, received.append, plugin_version="9.9.9",
+                          fab_port=24996)
+    check("server: start with busy fab port", server.start() is True)
+    try:
+        client = socket.create_connection(("127.0.0.1", 24997), timeout=5)
+        client.sendall(json.dumps(fab_rock()).encode("utf-8"))
+        client.close()
+        deadline = time.time() + 5
+        while not received and time.time() < deadline:
+            time.sleep(0.05)
+        check("server: main port still works", len(received) == 1)
+    finally:
+        server.stop()
+        blocker.close()
+
+
 def main():
     test_fab_rock()
     test_fab_multimat()
@@ -267,6 +302,7 @@ def main():
     test_fab_no_metadata()
     test_old_formats_regress()
     test_server_protocol()
+    test_server_fab_port_taken()
     print()
     if FAILURES:
         print("FAILED: %d test(s): %s" % (len(FAILURES), ", ".join(FAILURES)))

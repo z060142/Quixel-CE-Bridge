@@ -44,8 +44,8 @@ After Sandbox starts, the Python console should show (stderr also goes to the
 editor console):
 
 ```
-[QuixelCEBridge] QuixelCEBridge 1.1.0 loading from ...
-[QuixelCEBridge] listening for Quixel Bridge / Fab on 127.0.0.1:24981
+[QuixelCEBridge] QuixelCEBridge 1.1.1 loading from ...
+[QuixelCEBridge] listening for Quixel Bridge / Fab on 127.0.0.1:24981, ::1:24981, 127.0.0.1:31337, ::1:31337
 [QuixelCEBridge]    rc.exe         <engine root>\Tools\rc\rc.exe
 [QuixelCEBridge]    assets root    <current project's Assets path>
 ...
@@ -75,12 +75,16 @@ Fab payload format (what Epic's official DCC plugins receive). The same
 listener socket handles all three formats — the parser auto-detects the
 payload type, so nothing changes on the CRYENGINE side.
 
-* Point Fab's application/DCC integration at **Host** `127.0.0.1`,
-  **Port** `24981` (must match config.json) — the plugin answers the
-  launcher's `ping` with its version, accepts the payload, and reports the
-  import result (`success` / `warning` / `critical`) back to the launcher's
-  callback port (`metadata.launcher.listening_port`, 24563 by default; see
-  `fab.status_callback` in config.json).
+* The plugin listens on **two ports**: `port` (24981, the Quixel Bridge
+  socket) and `fab_port` (**31337, Fab's "Custom (Socket Port)" export
+  default**) — so the launcher works without changing anything in Fab.
+  Set `fab_port` to 0 to listen on `port` only, or change it if Fab's export
+  settings use a different socket port.
+* Fab probes the target with `ping`; the plugin answers with its version,
+  accepts the payload, and reports the import result (`success` /
+  `warning` / `critical`) back to the launcher's callback port
+  (`metadata.launcher.listening_port`; see `fab.status_callback` in
+  config.json).
 * Fab payloads carry absolute file paths (the launcher downloads the asset
   itself) and one material per `materials[]` entry. Assets with several
   models become variations (`_var1`, `_var2`, …); each mesh's
@@ -161,6 +165,7 @@ cap) — see the troubleshooting section.
 | Key | Default | Notes |
 |---|---|---|
 | `host` / `port` | `127.0.0.1` / `24981` | Listen address (must match Bridge) |
+| `fab_port` | `31337` | Second listen port = Fab's "Custom (Socket Port)" default, so the launcher connects out of the box; `0` = listen on `port` only |
 | `auto_start` | `true` | Start listening on startup |
 | `assets_root` | `""` | Absolute project Assets path; empty = `get_game_folder()` |
 | `output_subdir` | `Objects/Megascans` | Output subfolder |
@@ -188,7 +193,9 @@ cap) — see the troubleshooting section.
 * **Port in use**: `cannot listen on 127.0.0.1:24981` — change the port in
   config.json **and** Bridge/Fab, restart the listener; make sure Blender's
   MSPlugin (28888) / Epic's Fab DCC plugin (28889, callback 24563) isn't
-  fighting for the same port.
+  fighting for the same port. A busy `fab_port` (31337) is only a warning —
+  the Bridge port keeps working; point Fab's socket export at `port`
+  instead.
 * **rc.exe NOT FOUND**: set `rc_exe` explicitly in config.
 * **texproc.exe NOT FOUND**: make sure `bin\` is still inside the plugin folder.
 * **assets root NOT FOUND / path points into the engine folder**: CE 5.7's
