@@ -44,6 +44,7 @@
     "fab": {
         "status_callback": true
     },
+    "stage_dir": "user",
     "stage_imports": true,
     "keep_work_files": false
 }

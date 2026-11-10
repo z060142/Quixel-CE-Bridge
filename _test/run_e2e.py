@@ -10,6 +10,7 @@ ctrl.settings.set("assets_root", os.path.join(HERE, "gameproject", "Assets"))
 ctrl.settings.set("rc_exe", r"S:\Crytek\cryengine-57-lts\5.7.1\Tools\rc\rc.exe")
 ctrl.settings.set("port", 24999)
 ctrl.settings.set("keep_work_files", True)
+ctrl.settings.set("stage_dir", "temp")   # exercise the cross-volume copy+rename publish path
 ctrl.settings.set("material.plant_shader", "Vegetation")
 assert ctrl.start_server()
 

@@ -6,6 +6,7 @@ normal-flip checks.  Run:  python _test/embed37.py _test/run_fab.py
 import glob
 import json
 import os
+import shutil
 import socket
 import sys
 import time
@@ -105,6 +106,10 @@ def main():
     ctrl.settings.set("port", 24998)
     ctrl.settings.set("fab_port", 24996)
     ctrl.settings.set("keep_work_files", True)
+    # default stage_dir "user" -> work folders inside gameproject/user/QuixelCEBridge
+    base = os.path.join(HERE, "gameproject", "user", "QuixelCEBridge")
+    for old in glob.glob(os.path.join(base, "qceb_*")):
+        shutil.rmtree(old, ignore_errors=True)
     assert ctrl.start_server()
     port = 24996   # Fab's "Custom (Socket Port)" target — the launcher sends here
 
@@ -127,11 +132,11 @@ def main():
 
     results = {r.asset.id: r for r in ctrl.history}
     root = os.path.join(HERE, "gameproject", "Assets", "Objects", "Megascans")
-    temp = os.environ.get("TEMP", "/tmp")
+    base = os.path.join(HERE, "gameproject", "user", "QuixelCEBridge")   # default stage_dir "user"
 
     # --- staging: intermediates stay in the kept work dir, finals in the project
     def staging(name):
-        for d in sorted(glob.glob(os.path.join(temp, "qceb_%s_*" % name, "stage"))):
+        for d in sorted(glob.glob(os.path.join(base, "qceb_%s_*" % name, "stage"))):
             return d
         return ""
     stage_dirs = {name: staging(name) for name in ("fabrock", "fabsurf", "fabmulti")}
@@ -165,7 +170,7 @@ def main():
               os.path.isfile(os.path.join(stage_dirs["fabrock"], r.asset.safe_base + ".json")))
         # normal flip honored: find the kept texproc settings json
         flips = []
-        for settings_path in glob.glob(os.path.join(temp, "qceb_fabrock_*", "*.texproc.json")):
+        for settings_path in glob.glob(os.path.join(base, "qceb_fabrock_*", "*.texproc.json")):
             data = json.load(open(settings_path, encoding="utf-8"))
             flips.append(data.get("normal_flip_green"))
         check("rock normal_flip_green true (fab flag)", True in flips, flips)

@@ -10,11 +10,14 @@ Output layout (all under <assets_root>/<output_subdir>/<type>/<name_id>/):
     <name_id>_var2.cgf, <name_id>_var2_lod1.cgf ...               more variations
 
 With "stage_imports" (default on) everything above is first built in a
-staging folder under the temp work dir; when the whole asset is done only
-the final files (.dds / .cgf / .mtl + their .cryasset) are moved into the
-project. TIF sources and RC request jsons never touch the asset folder,
-and each file is copied to '<name>.qcebtmp' then renamed in place, so
-Sandbox's asset watcher never sees a half-written file.
+staging folder inside the per-import work folder (see stage_base(): by
+default <project>/user/QuixelCEBridge/qceb_<id>_<rand>/, i.e. inside the
+game project but outside Assets, so the editor never scans it); when the
+whole asset is done only the final files (.dds / .cgf / .mtl + their
+.cryasset) are moved into the project. TIF sources and RC request jsons
+never touch the asset folder, and on the same volume each file is moved
+with a single atomic rename, so Sandbox's asset watcher never sees a
+half-written file.
 
 The returned ImportResult is consumed on the main thread by scene.py.
 """
@@ -59,12 +62,13 @@ TMP_SUFFIX = ".qcebtmp"
 def publish_stage(stage_dir, dest_dir, keep_tif=False):
     """Move the final files of one asset from `stage_dir` into `dest_dir`.
 
-    Two-phase move: first every file is copied to '<dest>/<name>.qcebtmp'
-    (an extension Sandbox's asset watcher ignores), then all of them are
-    renamed in place - each rename is atomic, so the project never contains
-    a half-written asset file. Returns (moved count, [(name, error)]).
-    Raises ToolError when the copy phase already failed, in which case no
-    destination file has been touched.
+    On the same volume (the default stage_dir "user" lives inside the
+    project) every file is moved with a single atomic rename, so the
+    project only ever sees complete files. Across volumes each file is
+    first copied to '<dest>/<name>.qcebtmp' (an extension Sandbox's asset
+    watcher ignores) and then renamed in place - still atomic per file.
+    Returns (moved count, [(name, error)]). Raises ToolError when a copy
+    already failed, in which case no destination file has been touched.
     """
     extensions = FINAL_EXTENSIONS + ((".tif",) if keep_tif else ())
     plan = []
@@ -75,12 +79,28 @@ def publish_stage(stage_dir, dest_dir, keep_tif=False):
                 continue
             rel = name if rel_root == "." else os.path.join(rel_root, name)
             plan.append((os.path.join(root, name), os.path.join(dest_dir, rel)))
+
+    def parent_of(dst):
+        parent = os.path.dirname(dst)
+        if parent and not os.path.isdir(parent):
+            os.makedirs(parent)
+
+    same_volume = (os.path.splitdrive(os.path.abspath(stage_dir))[0].lower()
+                   == os.path.splitdrive(os.path.abspath(dest_dir))[0].lower())
+    if same_volume:
+        failures = []
+        for src, dst in plan:
+            try:
+                parent_of(dst)
+                os.replace(src, dst)   # atomic move
+            except OSError as error:
+                failures.append((os.path.basename(dst), str(error)))
+        return len(plan) - len(failures), failures
+
     copies = []
     try:
         for src, dst in plan:
-            parent = os.path.dirname(dst)
-            if parent and not os.path.isdir(parent):
-                os.makedirs(parent)
+            parent_of(dst)
             tmp = dst + TMP_SUFFIX
             shutil.copy2(src, tmp)
             copies.append((tmp, dst))
@@ -117,12 +137,71 @@ def _mesh_sub_index(mesh, count):
     return index if isinstance(index, int) and 0 <= index < count else 0
 
 
+def stage_base(settings, assets_root):
+    """Where the per-import work folders (staging + intermediates) live.
+
+    stage_dir setting:
+      "user" (default) -> <project>/user/QuixelCEBridge - inside the game
+                          project but outside Assets, so the editor's asset
+                          watcher never scans it
+      "temp"           -> the system temp folder
+      absolute path    -> exactly there (any relative path is taken relative
+                          to the project root)
+    Returns "" for the system temp folder.
+    """
+    value = (settings.get("stage_dir") or "user").strip()
+    root = os.path.normpath(assets_root or "")
+    project = os.path.dirname(root) if os.path.basename(root).lower() == "assets" else root
+    if not value or value.lower() == "user":
+        return os.path.join(project, "user", "QuixelCEBridge") if project else ""
+    if value.lower() == "temp":
+        return ""
+    if os.path.isabs(value):
+        return value
+    return os.path.join(project, value) if project else ""
+
+
+def sweep_work_dirs(settings, assets_root, max_age_hours=24):
+    """Remove work folders left behind by crashed imports (older than a day)."""
+    base = stage_base(settings, assets_root)
+    if not base or not os.path.isdir(base):
+        return 0
+    cutoff = time.time() - max_age_hours * 3600
+    removed = 0
+    try:
+        entries = os.listdir(base)
+    except OSError:
+        return 0
+    for name in entries:
+        if not name.startswith("qceb_"):
+            continue
+        path = os.path.join(base, name)
+        try:
+            if os.path.isdir(path) and os.path.getmtime(path) < cutoff:
+                shutil.rmtree(path, ignore_errors=True)
+                removed += 1
+                logger.info("removed leftover work folder %s" % path)
+        except OSError:
+            pass
+    return removed
+
+
 def import_asset(asset, settings, assets_root, progress=None):
     """Run the full pipeline for one asset. Never raises; errors land in result."""
     started = time.time()
     result = ImportResult(asset)
     progress = progress or (lambda text: None)
-    work_dir = tempfile.mkdtemp(prefix="qceb_%s_" % asset.id)
+    base = stage_base(settings, assets_root)
+    try:
+        if base:
+            os.makedirs(base, exist_ok=True)
+            work_dir = tempfile.mkdtemp(prefix="qceb_%s_" % asset.id, dir=base)
+        else:
+            work_dir = tempfile.mkdtemp(prefix="qceb_%s_" % asset.id)
+    except OSError as error:
+        logger.warning("staging folder %s unavailable (%s); using the system temp folder"
+                       % (base or "", error))
+        work_dir = tempfile.mkdtemp(prefix="qceb_%s_" % asset.id)
     try:
         _import(asset, settings, assets_root, result, work_dir, progress)
         result.ok = not result.errors

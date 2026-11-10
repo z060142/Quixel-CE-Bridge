@@ -20,7 +20,7 @@ import zipfile
 
 from . import VERSION, logger, scene
 from .bridge_payload import parse_payload
-from .importer import import_asset
+from .importer import import_asset, stage_base, sweep_work_dirs
 from .paths import find_bundled, find_rc
 from .server import BridgeServer, split_json_documents
 from .settings import PLUGIN_DIR, Settings
@@ -47,6 +47,7 @@ class Controller(object):
         self.history = []          # [ImportResult]
         self.listeners = []        # callables(event, data) for the UI (main thread)
         self._zip_refs = {}        # temp zip dir -> assets still importing
+        self._swept = False         # leftover work folders swept once
 
     # ----------------------------------------------------------------- runtime
     def runtime_settings(self):
@@ -57,6 +58,9 @@ class Controller(object):
         snap.set("_runtime.converter_exe", find_bundled(snap.get("converter_exe"), "converter.exe"))
         root = snap.get("assets_root") or scene.game_folder()
         snap.set("_runtime.assets_root", os.path.abspath(root) if root else "")
+        if not self._swept:
+            self._swept = True
+            sweep_work_dirs(snap, snap.get("_runtime.assets_root"))
         return snap
 
     def diagnostics(self):
@@ -67,6 +71,7 @@ class Controller(object):
             "converter.exe": snap.get("_runtime.converter_exe") or "NOT FOUND",
             "assets root": snap.get("_runtime.assets_root") or "NOT FOUND",
             "output": os.path.join(snap.get("_runtime.assets_root") or "?", snap.get("output_subdir")),
+            "staging": stage_base(snap, snap.get("_runtime.assets_root")) or "(system temp)",
             "listening": ("%s:%s" % (snap.get("host"), snap.get("port")) if self.listening else "no") +
                          ((" (+ %s for Fab)" % snap.get("fab_port")) if self.listening and snap.get("fab_port") else ""),
         }

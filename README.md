@@ -44,10 +44,11 @@ After Sandbox starts, the Python console should show (stderr also goes to the
 editor console):
 
 ```
-[QuixelCEBridge] QuixelCEBridge 1.1.1 loading from ...
+[QuixelCEBridge] QuixelCEBridge 1.2.1 loading from ...
 [QuixelCEBridge] listening for Quixel Bridge / Fab on 127.0.0.1:24981, ::1:24981, 127.0.0.1:31337, ::1:31337
 [QuixelCEBridge]    rc.exe         <engine root>\Tools\rc\rc.exe
 [QuixelCEBridge]    assets root    <current project's Assets path>
+[QuixelCEBridge]    staging        <current project>\user\QuixelCEBridge
 ...
 ```
 
@@ -119,8 +120,10 @@ payload type, so nothing changes on the CRYENGINE side.
   * `QuixelCEBridge: Status` — print tool paths / status
 
 What an import produces (with `stage_imports`, on by default, everything is
-built in a temp staging folder first — the project folder only receives
-complete files: DDS / CGF / MTL and their `.cryasset` — never the TIF
+built in a staging folder under `<project>/user/QuixelCEBridge` — inside
+the game project but outside `Assets`, so the editor never scans it — and
+the asset folder only receives complete files: DDS / CGF / MTL and their
+`.cryasset`, each moved in with a single atomic rename; never the TIF
 sources, RC request jsons or half-written files):
 * Textures (explicitly compiled with RC presets, not the automatic preset):
   `_diff.dds` (AlbedoWithCoverage, plants carry coverage alpha)
@@ -189,7 +192,8 @@ cap) — see the troubleshooting section.
 | `placement.spawn_distance` | `3.0` | metres |
 | `placement.apply_surface_to_selection` | `true` | Assign surface assets to the selection |
 | `fab.status_callback` | `true` | Report import status back to the Fab launcher (TCP `127.0.0.1:launcher.listening_port`); harmless when no launcher is running |
-| `stage_imports` | `true` | Build each asset in a temp staging folder; move only the finished files (DDS / CGF / MTL + `.cryasset`) into the project when the asset is complete, so Sandbox's asset watcher never sees half-written assets (a common crash cause). With staging on, `texture.delete_tif_after_dds` is moot — TIF sources never enter the asset folder |
+| `stage_imports` | `true` | Build each asset in a staging folder; move only the finished files (DDS / CGF / MTL + `.cryasset`) into the project when the asset is complete, so Sandbox's asset watcher never sees half-written assets (a common crash cause). With staging on, `texture.delete_tif_after_dds` is moot — TIF sources never enter the asset folder |
+| `stage_dir` | `user` | Where the staging/work folders live: `user` = `<project>/user/QuixelCEBridge` (inside the game project, outside `Assets`), `temp` = the system temp folder, or any absolute path. Leftovers from crashed imports are swept on startup (folders older than 24 h) |
 | `keep_work_files` | `false` | Debug: keep texproc/converter intermediates (includes the staging folder) |
 
 ## 7. Troubleshooting

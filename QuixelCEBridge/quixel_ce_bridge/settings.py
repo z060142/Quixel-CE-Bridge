@@ -91,7 +91,15 @@ DEFAULTS = {
         "status_callback": True
     },
 
-    # Build each asset in a temp staging folder and move only the final
+    # Where the per-import work folders (staging + intermediates) live:
+    #   "user" (default) -> <project>/user/QuixelCEBridge - inside the game
+    #                        project but outside Assets, so the editor's
+    #                        asset watcher never scans it
+    #   "temp"           -> the system temp folder
+    #   "C:\\..."        -> any absolute path
+    "stage_dir": "user",
+
+    # Build each asset in a staging folder and move only the final
     # files (DDS / CGF / MTL + cryassets) into the project when done, so
     # Sandbox's asset watcher never sees half-written files. Intermediates
     # (TIF sources, RC request jsons) never enter the asset folder.
