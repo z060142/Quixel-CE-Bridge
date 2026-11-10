@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-"""Parse Quixel Bridge exports into MegascansAsset objects.
+"""Parse Quixel Bridge / Epic Fab exports into MegascansAsset objects.
 
-Two payload shapes are understood:
+Three payload shapes are understood:
 
 1. Bridge "Custom Socket Export" (MSPlugin style): a JSON array, one object
    per asset, with `components` (texture maps with absolute `path`s),
@@ -12,6 +12,15 @@ Two payload shapes are understood:
    while the actually exported files (e.g. `<Asset>_Raw_8K_BaseColor.jpg`,
    `<Asset>_Raw.fbx`) sit next to the JSON. Maps and meshes are resolved
    from `uri` when the file exists, otherwise by scanning the folder.
+
+3. An Epic Fab live-link payload (the format the Fab desktop launcher sends
+   to DCC plugins since Quixel Bridge became part of Fab): a single object
+   with `meshes` (models with `file` + `lods`), `materials` (a `textures`
+   dict of channel -> absolute path, `flipnmapgreenchannel`) and `metadata`
+   ({`launcher`, `fab` {`listing`, `isQuixel`, `quality`}, `megascans` = the
+   old metadata v2 embedded}). The launcher downloads the files itself, so
+   all paths are absolute and need no resolution. Mirrors Epic's own Blender
+   receiver plugin (scripts/startup/Fab, fabplugins/payload.py).
 """
 import json
 import os
@@ -37,12 +46,22 @@ METADATA_TYPE_ALIASES = {
     "sss": "translucency", "subsurface": "translucency",
     "emissive": "emissive", "emission": "emissive",
     "fuzz": "fuzz", "shell": "shellmap", "shellmap": "shellmap",
+    # Fab channel names that differ from Bridge's
+    "occlusion": "ao", "orm": "orm", "ao_rough_metal": "orm",
 }
 
 TYPE_BY_ASSET_TYPE = {
     "3d asset": "3d", "3d": "3d", "assembly": "3d",
     "plant": "3dplant", "3d plant": "3dplant", "3dplant": "3dplant",
     "surface": "surface", "surface scan": "surface",
+    "atlas": "atlas", "decal": "decal", "brush": "brush", "displacement": "displacement",
+}
+
+# Fab metadata.fab.listing.listingType -> internal asset type
+FAB_LISTING_TYPES = {
+    "3d-model": "3d", "3dmodel": "3d", "3d model": "3d", "3d asset": "3d",
+    "material": "surface", "surface": "surface",
+    "plant": "3dplant", "3d-plant": "3dplant", "3dplant": "3dplant",
     "atlas": "atlas", "decal": "decal", "brush": "brush", "displacement": "displacement",
 }
 
@@ -61,14 +80,15 @@ class TextureMap(object):
 
 
 class MeshEntry(object):
-    __slots__ = ("path", "format", "lod", "variation", "is_billboard")
+    __slots__ = ("path", "format", "lod", "variation", "is_billboard", "material_index")
 
-    def __init__(self, path, format_, lod, variation, is_billboard=False):
+    def __init__(self, path, format_, lod, variation, is_billboard=False, material_index=-1):
         self.path = path
         self.format = format_
         self.lod = lod                # int (0..n) or None
         self.variation = variation    # int >= 1
         self.is_billboard = is_billboard
+        self.material_index = material_index   # Fab meshes: index into materials[]
 
     def __repr__(self):
         return "MeshEntry(var=%s, lod=%s, %s)" % (self.variation, self.lod, os.path.basename(self.path))
@@ -154,6 +174,12 @@ class MegascansAsset(object):
         self.is_metal = str(data.get("category", "")).lower() == "metal"
         self.apply_to_selection = bool(data.get("applyToSelection", False))
         self.meta = {m.get("key"): m.get("value") for m in data.get("meta", []) or [] if isinstance(m, dict)}
+        # Fab extras (never set by Bridge payloads; see _asset_from_fab)
+        self.normal_flip_green = None      # per-material normal Y-flip override
+        self.main_material_name = ""
+        self.extra_materials = []           # [{name, textures, flip}] beyond the first
+        self.extra_files = {}              # {native: [...], textures: [...]} (Fab)
+        self.fab_callback = None           # {port, id, path} for launcher reports
 
         name = data.get("name") or os.path.basename(self.path or "") or self.id
         self.display_name = name
@@ -423,6 +449,11 @@ def _asset_from_metadata(item, base_folder):
     asset.is_metal = "metal" in categories
     asset.apply_to_selection = False
     asset.meta = {m.get("key"): m.get("value") for m in item.get("meta", []) or [] if isinstance(m, dict)}
+    asset.normal_flip_green = None
+    asset.main_material_name = ""
+    asset.extra_materials = []
+    asset.extra_files = {}
+    asset.fab_callback = None
 
     textures, billboards, meshes = {}, {}, []
     if base_folder and os.path.isdir(base_folder):
@@ -440,6 +471,187 @@ def _asset_from_metadata(item, base_folder):
     asset.textures = {key: value[1] for key, value in textures.items()}
     asset.billboard_textures = {key: value[1] for key, value in billboards.items()}
     asset.workflow = "metalness" if "metalness" in asset.textures else "specular"
+    return asset
+
+
+# --------------------------------------------------------------------------
+# Fab (Epic Games launcher) payloads
+# --------------------------------------------------------------------------
+
+def _is_fab_payload(item):
+    """Fab live-link payload: {meshes: [{file, lods}], materials: [{textures}], metadata}."""
+    if not isinstance(item, dict):
+        return False
+    meshes = item.get("meshes")
+    materials = item.get("materials")
+    if not isinstance(meshes, list) and not isinstance(materials, list):
+        return False
+    meta = item.get("metadata")
+    if isinstance(meta, dict) and ("launcher" in meta or "fab" in meta or "megascans" in meta):
+        return True
+    # tolerate a payload without metadata: entries carry Fab-style fields
+    for entry in (meshes or []) + (materials or []):
+        if isinstance(entry, dict) and ("file" in entry or "lods" in entry or "textures" in entry):
+            return True
+    return False
+
+
+def _fab_material_sets(item):
+    """Fab materials[] -> [{name, textures, flip}] with normalized channel keys.
+
+    All entries are kept (even without usable textures) so that mesh
+    `material_index` references stay valid.
+    """
+    sets = []
+    for mat in item.get("materials") or []:
+        if not isinstance(mat, dict):
+            sets.append({"name": "", "textures": {}, "flip": False})
+            continue
+        textures = {}
+        for key, path in (mat.get("textures") or {}).items():
+            if not isinstance(path, str) or not path:
+                continue
+            internal = METADATA_TYPE_ALIASES.get(str(key).lower().strip())
+            if not internal:
+                continue
+            ext = os.path.splitext(path)[1].lstrip(".").lower()
+            textures[internal] = TextureMap(internal, path, ext, os.path.basename(path))
+        sets.append({"name": str(mat.get("name", "") or ""),
+                     "textures": textures,
+                     "flip": bool(mat.get("flipnmapgreenchannel", False))})
+    return sets
+
+
+def _fab_asset_type(item, quixel, fab):
+    """Internal asset type from the embedded Quixel metadata / Fab listing."""
+    listing = fab.get("listing") or {}
+    listing_type = str(listing.get("listingType", "") or "").lower()
+    slug = str((listing.get("category") or {}).get("slug", "") or "").lower()
+    # Fab plant listings carry a nature-plants slug no matter the listing type
+    if slug.startswith("nature-plants"):
+        return "3dplant"
+    tags_info = quixel.get("semanticTags") or {}
+    atype = str(tags_info.get("asset_type", "") or "").lower().strip()
+    if not atype:
+        for cat in [str(c).lower() for c in (quixel.get("categories") or [])]:
+            if cat in TYPE_BY_ASSET_TYPE:
+                atype = TYPE_BY_ASSET_TYPE[cat]
+                break
+    if not atype:
+        atype = FAB_LISTING_TYPES.get(listing_type, "")
+    if not atype:
+        atype = "3d" if item.get("meshes") else "surface"
+    return TYPE_BY_ASSET_TYPE.get(atype, atype)
+
+
+def _fab_meshes(item, asset):
+    """Fab meshes[] -> [MeshEntry]. One Fab model per variation, its lods form
+    the LOD chain. material_index is kept for sub-material assignment."""
+    meshes = []
+    for model_index, model in enumerate(item.get("meshes") or []):
+        if not isinstance(model, dict):
+            continue
+        variation = model_index + 1
+        mat_index = model.get("material_index")
+        mat_index = mat_index if isinstance(mat_index, int) else -1
+        files = []
+        main_file = str(model.get("file", "") or "")
+        if main_file:
+            files.append((main_file, mat_index))
+        for lod in model.get("lods") or []:
+            if not isinstance(lod, dict):
+                continue
+            lod_file = str(lod.get("file", "") or "")
+            if not lod_file:
+                continue
+            lod_mat = lod.get("material_index")
+            files.append((lod_file, lod_mat if isinstance(lod_mat, int) else mat_index))
+
+        seen, previous_lod = set(), None
+        for order, (file_path, file_mat) in enumerate(files):
+            key = os.path.normcase(os.path.abspath(file_path))
+            if key in seen:
+                continue
+            seen.add(key)
+            lod = _lod_from_name(file_path)
+            if lod is None:
+                if order == 0:
+                    if asset.is_high_poly:
+                        lod = None
+                    else:
+                        lod = asset.active_lod if asset.active_lod is not None else 0
+                else:
+                    lod = (previous_lod + 1) if previous_lod is not None else 1
+            if lod is not None:
+                previous_lod = lod
+            ext = os.path.splitext(file_path)[1].lstrip(".").lower()
+            meshes.append(MeshEntry(file_path, ext, lod, variation, False, file_mat))
+    return meshes
+
+
+def _asset_from_fab(item, base_folder=None):
+    """Fab live-link payload -> MegascansAsset (paths are already absolute)."""
+    asset = MegascansAsset.__new__(MegascansAsset)
+    meta = item.get("metadata") or {}
+    quixel = meta.get("megascans") or {}
+    fab = meta.get("fab") or {}
+    listing = fab.get("listing") or {}
+    launcher = meta.get("launcher") or {}
+
+    asset.raw = item
+    asset.id = str(item.get("id", "") or quixel.get("id", "") or "").strip() or "noid"
+
+    name = str(quixel.get("name", "") or listing.get("title", "") or "").strip() or asset.id
+    asset.display_name = name
+    token = name.replace(" ", "_")
+    if len(token.split("_")) > 2:
+        token = "_".join(token.split("_")[:-1])
+    asset.safe_base = safe_name("%s_%s" % (token, asset.id))
+
+    asset.type = _fab_asset_type(item, quixel, fab)
+    asset.path = str(item.get("path", "") or "")
+    categories = [str(c).lower() for c in (quixel.get("categories") or [])]
+    slug = str((listing.get("category") or {}).get("slug", "") or "").lower()
+    asset.category = categories[0] if categories else slug
+    asset.categories = categories or ([slug] if slug else [])
+    quixel_tags = [str(t).lower() for t in (quixel.get("tags") or [])]
+    fab_tags = [str(t.get("slug", "")).lower() for t in (listing.get("tags") or []) if isinstance(t, dict)]
+    asset.tags = quixel_tags or fab_tags
+    asset.active_lod_raw = str(quixel.get("activeLOD", "") or "")
+    asset.min_lod_raw = str(quixel.get("minLOD", "") or "")
+    asset.active_lod = _lod_index(asset.active_lod_raw)
+    asset.min_lod = _lod_index(asset.min_lod_raw)
+    asset.is_high_poly = asset.active_lod_raw.lower() == "high"
+    workflow = str(quixel.get("workflow", "") or "").lower()
+    asset.workflow = "metalness" if workflow in ("metalness", "metallic", "metal") else "specular"
+    asset.is_metal = "metal" in ([asset.category] + asset.categories + asset.tags)
+    asset.apply_to_selection = False
+    asset.meta = {m.get("key"): m.get("value") for m in (quixel.get("meta") or []) if isinstance(m, dict)}
+
+    materials = _fab_material_sets(item)
+    asset.textures = materials[0]["textures"] if materials else {}
+    asset.normal_flip_green = materials[0]["flip"] if materials else None
+    asset.main_material_name = materials[0]["name"] if materials else ""
+    asset.extra_materials = materials[1:]
+    asset.billboard_textures = {}
+    asset.extra_files = {
+        "native": [str(p) for p in (item.get("native_files") or []) if isinstance(p, str)],
+        "textures": [str(p) for p in (item.get("additional_textures") or []) if isinstance(p, str)],
+    }
+
+    asset.meshes = _fab_meshes(item, asset)
+    if asset.is_plant and asset.min_lod is not None:
+        # Fab has no billboard texture set; only mark LODs if one was sent
+        for mesh in asset.meshes:
+            mesh.is_billboard = bool(mesh.lod is not None and mesh.lod >= asset.min_lod and asset.billboard_textures)
+
+    try:
+        port = int(launcher.get("listening_port", 24563))
+    except (TypeError, ValueError):
+        port = 24563
+    asset.fab_callback = {"port": port,
+                          "id": str(item.get("id", "") or ""),
+                          "path": str(item.get("path", "") or "")}
     return asset
 
 
@@ -467,7 +679,9 @@ def parse_payload(payload, base_folder=None):
     for item in payload:
         if not isinstance(item, dict):
             continue
-        if _is_metadata(item):
+        if _is_fab_payload(item):
+            assets.append(_asset_from_fab(item, base_folder))
+        elif _is_metadata(item):
             assets.append(_asset_from_metadata(item, base_folder))
         else:
             assets.append(MegascansAsset(item))

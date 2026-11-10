@@ -82,6 +82,12 @@ DEFAULTS = {
         "select_new_objects": True
     },
 
+    # Fab live link: post import status back to the Fab launcher
+    # (the payload's metadata.launcher.listening_port, default 24563).
+    "fab": {
+        "status_callback": True
+    },
+
     # Keep texproc/converter intermediates (groups/settings/request JSON).
     "keep_work_files": False
 }

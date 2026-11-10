@@ -23,7 +23,7 @@ VALID_PHYSICALIZE = ("no", "default", "obstruct", "no_collide", "proxy_only")
 MIN_GOOD_CGF_BYTES = 10 * 1024
 
 
-def _patch_request(request, material_name, sub_index, physicalize, settings):
+def _patch_request(request, material_name, sub_index, physicalize, settings, slot_materials=None):
     request["material_filename"] = material_name
     unit = settings.get("geometry.unit_size") or "file"
     request["unit_size"] = unit
@@ -36,17 +36,26 @@ def _patch_request(request, material_name, sub_index, physicalize, settings):
     if not mats:
         logger.warning("FBX declares no materials; RC will use its default slot")
     for mat in mats:
-        name = mat.get("name", "").lower()
+        name = str(mat.get("name", "")).lower()
         if any(token in name for token in ("proxy", "collision", "collider")):
             mat["physicalize"] = "proxy_only"
             mat["sub_index"] = sub_index
             continue
         mat["physicalize"] = physicalize
         mat["sub_index"] = sub_index
+        if slot_materials:
+            # Fab multi-material assets: match FBX slot names to the sub
+            # materials the payload named (mirrors Epic's fuzzy matching)
+            for mat_name, mat_sub in slot_materials:
+                low = str(mat_name or "").lower()
+                if low and name and (low in name or name in low):
+                    mat["sub_index"] = mat_sub
+                    break
     return request
 
 
-def compile_mesh(mesh, cgf_path, material_name, sub_index, physicalize, work_dir, settings, rc):
+def compile_mesh(mesh, cgf_path, material_name, sub_index, physicalize, work_dir, settings, rc,
+                 slot_materials=None):
     """Convert one FBX/OBJ file to `cgf_path`. Returns the cgf path."""
     if mesh.format == "obj":
         logger.warning("OBJ export detected (%s). FBX is recommended for CRYENGINE; trying anyway."
@@ -95,7 +104,7 @@ def compile_mesh(mesh, cgf_path, material_name, sub_index, physicalize, work_dir
     outputs = converter.convert(source_path, conv_dir)
     with open(outputs["request"], "r", encoding="utf-8") as handle:
         request = json.load(handle)
-    request = _patch_request(request, material_name, sub_index, physicalize, settings)
+    request = _patch_request(request, material_name, sub_index, physicalize, settings, slot_materials)
 
     # RC writes "<request stem>.<ext>" next to the request, so place it in the
     # destination folder and name it after the target CGF.

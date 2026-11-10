@@ -8,15 +8,17 @@
 
 `sandbox.*` is only ever touched from pump(), i.e. the main thread.
 """
+import json
 import os
 import queue
 import shutil
+import socket
 import tempfile
 import threading
 import traceback
 import zipfile
 
-from . import logger, scene
+from . import VERSION, logger, scene
 from .bridge_payload import parse_payload
 from .importer import import_asset
 from .paths import find_bundled, find_rc
@@ -75,7 +77,8 @@ class Controller(object):
 
     def start_server(self):
         self.stop_server()
-        self.server = BridgeServer(self.settings.get("host"), self.settings.get("port"), self._incoming.put)
+        self.server = BridgeServer(self.settings.get("host"), self.settings.get("port"),
+                                   self._incoming.put, plugin_version=VERSION)
         ok = self.server.start()
         self._notify("server", ok)
         return ok
@@ -282,6 +285,7 @@ class Controller(object):
             logger.warning("%s: %s" % (result.asset.display_name, warning))
         if not result.ok:
             logger.error("FAILED %s (%.1fs): %s" % (result.asset.display_name, result.seconds, "; ".join(result.errors)))
+            self._fab_report(result)
             self._notify("result", result)
             return
         try:
@@ -292,7 +296,49 @@ class Controller(object):
         logger.info("DONE %s in %.1fs -> %s%s" % (
             result.asset.display_name, result.seconds, result.material_game_path,
             (" | objects: " + ", ".join(created)) if created else ""))
+        self._fab_report(result)
         self._notify("result", result)
+
+    # -------------------------------------------------------------- Fab reports
+    def _fab_report(self, result):
+        """Best-effort status report back to the Fab launcher.
+
+        Fab payloads carry metadata.launcher.listening_port; Epic's own DCC
+        plugins post {status, message, id, path, app_name, ...} + NUL there so
+        the launcher can show import feedback. Errors are sent as "critical"
+        (the launcher's historical convention). Nothing happens when the
+        launcher is not listening (e.g. plain Bridge / file imports).
+        """
+        callback = getattr(result.asset, "fab_callback", None)
+        if not callback or not self.settings.get("fab.status_callback", True):
+            return
+        if result.ok:
+            status = "warning" if result.warnings else "success"
+            if result.objects:
+                message = "imported %d object(s), material %s" % (
+                    len(result.objects), os.path.basename(result.material_game_path or "") or "n/a")
+            else:
+                message = "imported material %s" % (os.path.basename(result.material_game_path or "") or "n/a")
+        else:
+            status = "critical"
+            message = ("; ".join(result.errors) or "import failed")[:400]
+        try:
+            data = json.dumps({
+                "status": status,
+                "message": message,
+                "id": callback.get("id", ""),
+                "path": callback.get("path", ""),
+                "app_name": "cryengine",
+                "app_version": "5.7",
+                "plugin_version": VERSION,
+                "renderer": "Sandbox",
+            }) + "\0"
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.settimeout(0.5)
+                sock.connect(("127.0.0.1", int(callback.get("port") or 24563)))
+                sock.sendall(data.encode("utf-8"))
+        except (OSError, ValueError):
+            pass   # launcher not listening: fine outside the Fab app
 
     def start_pump(self):
         """Install a QTimer on the main thread. Returns True on success."""

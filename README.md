@@ -1,14 +1,15 @@
 # QuixelCEBridge
 
-Live-link plugin for Quixel Bridge → CRYENGINE 5.7 Sandbox — **not yet
-field-tested**, treat it as a work in progress.
+Live-link plugin for Quixel Bridge / **Fab** → CRYENGINE 5.7 Sandbox —
+**not yet field-tested**, treat it as a work in progress.
 
 Modeled after Blender's MSPlugin, it converts Megascans assets pushed from
-Bridge into native CRYENGINE formats: textures → `_diff/_ddna/_spec/…` DDS,
-meshes → CGF (with LODs), materials → `.mtl` (Illum / Vegetation shader),
-then places the meshes in the level / assigns materials to the selection.
-Megascans downloads can also be imported manually as an export **JSON** or
-the **.zip** you get from Bridge, without Bridge running.
+Bridge (or Fab) into native CRYENGINE formats: textures →
+`_diff/_ddna/_spec/…` DDS, meshes → CGF (with LODs), materials → `.mtl`
+(Illum / Vegetation shader), then places the meshes in the level / assigns
+materials to the selection. Megascans downloads can also be imported
+manually as an export **JSON** or the **.zip** you get from Bridge, without
+Bridge running.
 
 Pure Python (3.7), no build step required. Texture conversion is powered
 by the core of
@@ -43,8 +44,8 @@ After Sandbox starts, the Python console should show (stderr also goes to the
 editor console):
 
 ```
-[QuixelCEBridge] QuixelCEBridge 1.0.1 loading from ...
-[QuixelCEBridge] listening for Quixel Bridge on 127.0.0.1:24981
+[QuixelCEBridge] QuixelCEBridge 1.1.0 loading from ...
+[QuixelCEBridge] listening for Quixel Bridge / Fab on 127.0.0.1:24981
 [QuixelCEBridge]    rc.exe         <engine root>\Tools\rc\rc.exe
 [QuixelCEBridge]    assets root    <current project's Assets path>
 ...
@@ -67,7 +68,39 @@ imports everything automatically.
 > Sending `Bye Megascans` from Bridge stops the listener (same behavior as
 > MSPlugin); use the command to start listening again afterwards.
 
-## 3. Using it inside the editor
+## 3. Fab (Quixel on Fab) live link
+
+Since Quixel moved into Epic's **Fab**, exports can also arrive in the new
+Fab payload format (what Epic's official DCC plugins receive). The same
+listener socket handles all three formats — the parser auto-detects the
+payload type, so nothing changes on the CRYENGINE side.
+
+* Point Fab's application/DCC integration at **Host** `127.0.0.1`,
+  **Port** `24981` (must match config.json) — the plugin answers the
+  launcher's `ping` with its version, accepts the payload, and reports the
+  import result (`success` / `warning` / `critical`) back to the launcher's
+  callback port (`metadata.launcher.listening_port`, 24563 by default; see
+  `fab.status_callback` in config.json).
+* Fab payloads carry absolute file paths (the launcher downloads the asset
+  itself) and one material per `materials[]` entry. Assets with several
+  models become variations (`_var1`, `_var2`, …); each mesh's
+  `material_index` is preserved — the matching material becomes a **sub
+  material** in the `.mtl` (extra materials get `_m2`, `_m3`, … textures).
+* Per-material `flipnmapgreenchannel` overrides the global
+  `texture.normal_is_opengl` for Fab assets (the flag is authoritative for
+  the source the asset came from).
+* A Fab payload saved as JSON can be imported manually with **Import Bridge
+  JSON** — format detection is automatic.
+* `Bye Fab` (launcher shutdown handshake) is ignored — the listener keeps
+  running; `Bye Megascans` still stops it.
+
+> Fab support follows the protocol used by Epic's official DCC plugins
+> (ping handshake, JSON payload, null-terminated status callback) but has
+> **not yet been field-tested against the real Fab launcher** — the offline
+> test suite simulates the handshake. If a live import misbehaves, switch
+> Fab to a plain file export and import the JSON / zip manually.
+
+## 4. Using it inside the editor
 
 * Panel: **Tools > Megascans > Quixel CE Bridge** (PySide2 panel: port,
   output folder, texture/geometry/material toggles, diagnostics, log,
@@ -75,8 +108,8 @@ imports everything automatically.
 * Commands (Tools menu / Python console):
   * `QuixelCEBridge: Start Listening` / `Stop Listening`
   * `QuixelCEBridge: Import Bridge JSON` — manual import without Bridge
-    running: an export JSON **or a Quixel .zip download** (the panel button
-    accepts zips too)
+    running: an export JSON, a **Fab payload JSON**, **or a Quixel .zip
+    download** (the panel button accepts zips too)
   * `QuixelCEBridge: Process Pending` — pump the queue manually (usually not
     needed, QTimer runs it automatically)
   * `QuixelCEBridge: Status` — print tool paths / status
@@ -86,14 +119,15 @@ What an import produces:
   `_diff.dds` (AlbedoWithCoverage, plants carry coverage alpha)
   `_ddna.dds` (NormalsWithSmoothness, roughness baked into alpha)
   `_spec.dds` (Reflectance), `_displ.dds` (Displacement), `_sss.dds`, etc.
-* Material: `<name>.mtl` + `.mtl.cryasset`; the mesh is always multi-material
-  (sub0 = mesh, sub1 = plant billboard)
+* Material: `<name>.mtl` + `.mtl.cryasset`; 3D meshes are always
+  multi-material (sub0 = mesh, sub1 = plant billboard; Fab multi-material
+  assets: one sub per material, matched by `material_index`)
 * Meshes: `<name>.cgf`, `<name>_lod1.cgf`…; multiple variants →
   `<name>_varN.cgf`
 * 3D assets are placed 3 m in front of the camera and selected; Surface
   assets are assigned to the current selection
 
-## 4. Quick testing without Bridge
+## 5. Quick testing without Bridge
 
 `_test\bridge_payload.json` (in the repo root's `_test\`) is a ready-to-use
 fake Bridge export (a 3D rock, a metal surface, a plant + billboard, with
@@ -122,7 +156,7 @@ cap) — see the troubleshooting section.
 3. Watch the Python console log and the output under
    `<project Assets>\Objects\Megascans\`
 
-## 5. config.json reference
+## 6. config.json reference
 
 | Key | Default | Notes |
 |---|---|---|
@@ -132,7 +166,7 @@ cap) — see the troubleshooting section.
 | `output_subdir` | `Objects/Megascans` | Output subfolder |
 | `rc_exe` | `""` | Empty = auto-find `<engine>\Tools\rc\rc.exe` |
 | `texture.output_resolution` | `original` | `original` or `2048`/`4096`… |
-| `texture.normal_is_opengl` | `true` | Bridge normals are OpenGL; flips the green channel |
+| `texture.normal_is_opengl` | `true` | Bridge normals are OpenGL; flips the green channel (Fab payloads override this per material with `flipnmapgreenchannel`) |
 | `texture.bake_ao_into_diffuse` | `false` | Bake AO into `_diff` |
 | `texture.generate_dds` | `true` | false = keep TIF only (Sandbox compiles on first use) |
 | `texture.delete_tif_after_dds` | `false` |  |
@@ -146,13 +180,15 @@ cap) — see the troubleshooting section.
 | `placement.place_in_level` | `false` | Place 3D assets in front of the camera; unchecked = files only, place manually from the asset browser later |
 | `placement.spawn_distance` | `3.0` | metres |
 | `placement.apply_surface_to_selection` | `true` | Assign surface assets to the selection |
+| `fab.status_callback` | `true` | Report import status back to the Fab launcher (TCP `127.0.0.1:launcher.listening_port`); harmless when no launcher is running |
 | `keep_work_files` | `false` | Debug: keep texproc/converter intermediates |
 
-## 6. Troubleshooting
+## 7. Troubleshooting
 
 * **Port in use**: `cannot listen on 127.0.0.1:24981` — change the port in
-  config.json **and** Bridge, restart the listener; make sure Blender's
-  MSPlugin (28888) isn't fighting for the same port.
+  config.json **and** Bridge/Fab, restart the listener; make sure Blender's
+  MSPlugin (28888) / Epic's Fab DCC plugin (28889, callback 24563) isn't
+  fighting for the same port.
 * **rc.exe NOT FOUND**: set `rc_exe` explicitly in config.
 * **texproc.exe NOT FOUND**: make sure `bin\` is still inside the plugin folder.
 * **assets root NOT FOUND / path points into the engine folder**: CE 5.7's

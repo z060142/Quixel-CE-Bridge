@@ -1,9 +1,12 @@
 # -*- coding: utf-8 -*-
-"""Socket listener for Quixel Bridge "Custom Socket Export".
+"""Socket listener for Quixel Bridge / Epic Fab live links.
 
-Bridge opens a TCP connection, writes the JSON array and closes it. Like the
-Blender MSPlugin we read until EOF and hand the bytes to a callback; the
-special message b"Bye Megascans" stops the listener.
+Both apps open a TCP connection, write one JSON payload and close it. We
+read until EOF and hand the bytes to a callback. Quixel Bridge stops the
+listener with b"Bye Megascans"; the Fab launcher probes the target with
+b"ping" (we answer with the plugin version, in the same pseudo-dict format
+Epic's own DCC plugins use) and says goodbye with b"Bye Fab" (ignored - the
+listener stays up so the target can be re-enabled without a restart).
 """
 import json
 import socket
@@ -12,6 +15,8 @@ import threading
 from . import logger
 
 STOP_MESSAGE = b"Bye Megascans"
+FAB_BYE_MESSAGE = b"Bye Fab"
+PING_MESSAGE = b"ping"
 
 
 def split_json_documents(text):
@@ -32,10 +37,11 @@ def split_json_documents(text):
 
 
 class BridgeServer(object):
-    def __init__(self, host, port, on_payload):
+    def __init__(self, host, port, on_payload, plugin_version=""):
         self.host = host
         self.port = int(port)
         self.on_payload = on_payload
+        self.plugin_version = str(plugin_version or "")
         self._sockets = []
         self._threads = []
         self._running = threading.Event()
@@ -72,7 +78,7 @@ class BridgeServer(object):
             thread = threading.Thread(target=self._accept_loop, args=(sock,), name="qceb-listen", daemon=True)
             thread.start()
             self._threads.append(thread)
-        logger.info("listening for Quixel Bridge on %s:%d" % (self.host, self.port))
+        logger.info("listening for Quixel Bridge / Fab on %s:%d" % (self.host, self.port))
         return True
 
     def stop(self):
@@ -95,6 +101,15 @@ class BridgeServer(object):
                 break
             threading.Thread(target=self._handle, args=(client,), name="qceb-client", daemon=True).start()
 
+    def _send_ping_reply(self, client):
+        """Fab handshake: same reply format Epic's DCC plugins send."""
+        if not self.plugin_version:
+            return
+        try:
+            client.sendall(str.encode("{'plugin_version': '%s'}" % self.plugin_version))
+        except OSError:
+            pass
+
     def _handle(self, client):
         chunks = []
         try:
@@ -103,11 +118,15 @@ class BridgeServer(object):
                 data = client.recv(65536)
                 if not data:
                     break
+                if not chunks and data.strip() in (PING_MESSAGE, b""):
+                    # Fab probe; the payload may follow on this connection
+                    self._send_ping_reply(client)
+                    continue
                 chunks.append(data)
         except socket.timeout:
-            logger.warning("Bridge connection timed out; using received data")
+            logger.warning("connection timed out; using received data")
         except OSError as error:
-            logger.warning("Bridge connection error: %s" % error)
+            logger.warning("connection error: %s" % error)
         finally:
             try:
                 client.close()
@@ -120,7 +139,10 @@ class BridgeServer(object):
             logger.info("stop message received")
             self.stop()
             return
+        if payload.strip() == FAB_BYE_MESSAGE:
+            logger.info("Fab disconnect message received; listener stays up")
+            return
         try:
             self.on_payload(payload)
         except Exception as error:  # noqa
-            logger.error("failed to queue Bridge payload: %s" % error)
+            logger.error("failed to queue payload: %s" % error)

@@ -128,7 +128,7 @@ def build_group(base_name, sources):
             "unknown": [], "diagnostics": []}
 
 
-def texproc_settings(settings, sources, is_plant):
+def texproc_settings(settings, sources, is_plant, flip_green=None):
     data = {
         "output_resolution": str(settings.get("texture.output_resolution", "original")),
         "diff_format": "diffuse_ao" if "ao" in sources else "albedo",
@@ -145,6 +145,10 @@ def texproc_settings(settings, sources, is_plant):
             "sss": "sss" in sources and is_plant,
         },
     }
+    if flip_green is not None:
+        # Fab payloads state the normal map convention per material
+        # (metadata materials[].flipnmapgreenchannel)
+        data["normal_flip_green"] = bool(flip_green)
     extra = settings.get("texture.texproc_settings") or {}
     for key, value in extra.items():
         if isinstance(value, dict) and isinstance(data.get(key), dict):
@@ -173,7 +177,7 @@ def _classify_outputs(folder, base_name):
 
 
 def process_texture_set(asset_textures, workflow, base_name, out_dir, work_dir, settings,
-                        is_plant=False, rc=None, alpha_test=True):
+                        is_plant=False, rc=None, alpha_test=True, flip_green=None):
     """Run texproc (+RC) for one texture group. Returns TextureSet."""
     result = TextureSet(base_name, out_dir)
     sources = select_sources(asset_textures, workflow, settings)
@@ -190,7 +194,7 @@ def process_texture_set(asset_textures, workflow, base_name, out_dir, work_dir, 
     with open(groups_path, "w", encoding="utf-8") as handle:
         json.dump({"version": 1, "groups": [build_group(base_name, sources)], "diagnostics": []}, handle, indent=2)
     with open(settings_path, "w", encoding="utf-8") as handle:
-        json.dump(texproc_settings(settings, sources, is_plant), handle, indent=2)
+        json.dump(texproc_settings(settings, sources, is_plant, flip_green), handle, indent=2)
 
     texproc = Texproc(settings.get("_runtime.texproc_exe"))
     proc = texproc.process(groups_path, settings_path, out_dir)

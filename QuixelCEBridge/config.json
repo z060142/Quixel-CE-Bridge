@@ -40,5 +40,8 @@
         "apply_surface_to_selection": true,
         "select_new_objects": true
     },
+    "fab": {
+        "status_callback": true
+    },
     "keep_work_files": false
 }
