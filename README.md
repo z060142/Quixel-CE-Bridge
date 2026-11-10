@@ -1,10 +1,8 @@
 # QuixelCEBridge
 
-Live-link plugin for Quixel Bridge / **Fab** → CRYENGINE 5.7 Sandbox —
-**not yet field-tested**, treat it as a work in progress.
-
-Modeled after Blender's MSPlugin, it converts Megascans assets pushed from
-Bridge (or Fab) into native CRYENGINE formats: textures →
+Live-link plugin for Quixel Bridge / **Fab** → CRYENGINE 5.7 Sandbox,
+modeled after Blender's MSPlugin. It converts Megascans assets pushed
+from Bridge (or Fab) into native CRYENGINE formats: textures →
 `_diff/_ddna/_spec/…` DDS, meshes → CGF (with LODs), materials → `.mtl`
 (Illum / Vegetation shader), then places the meshes in the level / assigns
 materials to the selection. Megascans downloads can also be imported
@@ -100,10 +98,9 @@ payload type, so nothing changes on the CRYENGINE side.
   running; `Bye Megascans` still stops it.
 
 > Fab support follows the protocol used by Epic's official DCC plugins
-> (ping handshake, JSON payload, null-terminated status callback) but has
-> **not yet been field-tested against the real Fab launcher** — the offline
-> test suite simulates the handshake. If a live import misbehaves, switch
-> Fab to a plain file export and import the JSON / zip manually.
+> (ping handshake, JSON payload, null-terminated status callback). If a
+> live import misbehaves, switch Fab to a plain file export and import the
+> JSON / zip manually.
 
 ## 4. Using it inside the editor
 
@@ -264,3 +261,8 @@ cap) — see the troubleshooting section.
 * **Panel doesn't show up**: when PySide2 is missing Sandbox only registers
   the commands; the console will install it via
   `pip` (`Editor\Python\windows\python.exe -m pip install PySide2`).
+
+Anything else? Please open an issue at
+<https://github.com/z060142/Quixel-CE-Bridge/issues> with the Sandbox console
+log — the `[QuixelCEBridge]` lines (and the traceback, if any) are usually
+enough to pinpoint the cause.
