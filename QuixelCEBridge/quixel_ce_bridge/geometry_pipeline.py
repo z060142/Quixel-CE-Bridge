@@ -12,10 +12,11 @@ which CRYENGINE picks up automatically.
 import json
 import os
 import shutil
+import zlib
 
 from . import logger
 from . import fbxfix
-from .external import Converter, ResourceCompiler
+from .external import Converter, ResourceCompiler, ToolError
 
 VALID_PHYSICALIZE = ("no", "default", "obstruct", "no_collide", "proxy_only")
 # RC caps CGF vertices (after welding) at 65535 and silently writes an empty
@@ -54,6 +55,18 @@ def _patch_request(request, material_name, sub_index, physicalize, settings, slo
     return request
 
 
+def _conv_name(stem):
+    """Short, unique converter output folder for a mesh.
+
+    Windows caps the Sandbox process at 259-char paths (its manifest has no
+    longPathAware flag), and the converter names its outputs after the input
+    FBX filename, so every character spent here risks the request JSON
+    disappearing between converter.exe and Python on long asset names.
+    Hash the stem instead of embedding it.
+    """
+    return "conv_%s_%08x" % (stem[:12], zlib.crc32(stem.encode("utf-8")) & 0xFFFFFFFF)
+
+
 def compile_mesh(mesh, cgf_path, material_name, sub_index, physicalize, work_dir, settings, rc,
                  slot_materials=None):
     """Convert one FBX/OBJ file to `cgf_path`. Returns the cgf path."""
@@ -66,7 +79,7 @@ def compile_mesh(mesh, cgf_path, material_name, sub_index, physicalize, work_dir
     out_dir = os.path.dirname(cgf_path)
     cgf_name = os.path.basename(cgf_path)
     stem = os.path.splitext(cgf_name)[0]
-    conv_dir = os.path.join(work_dir, "conv_" + stem)
+    conv_dir = os.path.join(work_dir, _conv_name(stem))
     if os.path.isdir(conv_dir):
         shutil.rmtree(conv_dir, ignore_errors=True)
 
@@ -88,7 +101,7 @@ def compile_mesh(mesh, cgf_path, material_name, sub_index, physicalize, work_dir
         report = None
         if max_verts != 0:
             try:
-                fixed_path = os.path.join(work_dir, stem + "_fixed.fbx")
+                fixed_path = os.path.join(work_dir, "mesh_fixed.fbx")
                 report = fbxfix.fix_fbx(mesh.path, fixed_path, max_verts)
             except fbxfix.FBXFormatError as exc:
                 logger.warning("  FBX repair skipped (%s); converting the original" % exc)
@@ -102,7 +115,14 @@ def compile_mesh(mesh, cgf_path, material_name, sub_index, physicalize, work_dir
 
     converter = Converter(settings.get("_runtime.converter_exe"))
     outputs = converter.convert(source_path, conv_dir)
-    with open(outputs["request"], "r", encoding="utf-8") as handle:
+    request_path_in = outputs["request"]
+    if not os.path.isfile(request_path_in):
+        raise ToolError(
+            "converter reported success but its request file is missing: %s "
+            "(path is %d characters - too close to the Windows 259 limit; "
+            "antivirus or Sandbox's asset watcher may also delete it - move the "
+            "staging folder, see stage_dir in README)" % (request_path_in, len(request_path_in)))
+    with open(request_path_in, "r", encoding="utf-8") as handle:
         request = json.load(handle)
     request = _patch_request(request, material_name, sub_index, physicalize, settings, slot_materials)
 

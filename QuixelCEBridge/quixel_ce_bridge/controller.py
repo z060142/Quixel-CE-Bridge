@@ -56,10 +56,16 @@ class Controller(object):
         snap.set("_runtime.rc_exe", find_rc(snap.get("rc_exe")))
         snap.set("_runtime.texproc_exe", find_bundled(snap.get("texproc_exe"), "texproc.exe"))
         snap.set("_runtime.converter_exe", find_bundled(snap.get("converter_exe"), "converter.exe"))
-        root = snap.get("assets_root") or scene.game_folder()
+        configured = (snap.get("assets_root") or "").strip()
+        engine_root = scene.game_folder() if not configured else ""
+        root = configured or engine_root
         snap.set("_runtime.assets_root", os.path.abspath(root) if root else "")
+        snap.set("_runtime.game_root", bool(engine_root))
+        snap.set("_runtime.game_folder", engine_root)
         if not self._swept:
             self._swept = True
+            stage_root = stage_base(snap, snap.get("_runtime.assets_root"))
+            logger.info("staging work folders in %s" % (stage_root or "the system temp folder"))
             sweep_work_dirs(snap, snap.get("_runtime.assets_root"))
         return snap
 

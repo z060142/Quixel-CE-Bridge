@@ -44,7 +44,7 @@ After Sandbox starts, the Python console should show (stderr also goes to the
 editor console):
 
 ```
-[QuixelCEBridge] QuixelCEBridge 1.2.1 loading from ...
+[QuixelCEBridge] QuixelCEBridge 1.2.2 loading from ...
 [QuixelCEBridge] listening for Quixel Bridge / Fab on 127.0.0.1:24981, ::1:24981, 127.0.0.1:31337, ::1:31337
 [QuixelCEBridge]    rc.exe         <engine root>\Tools\rc\rc.exe
 [QuixelCEBridge]    assets root    <current project's Assets path>
@@ -121,7 +121,9 @@ payload type, so nothing changes on the CRYENGINE side.
 
 What an import produces (with `stage_imports`, on by default, everything is
 built in a staging folder under `<project>/user/QuixelCEBridge` — inside
-the game project but outside `Assets`, so the editor never scans it — and
+the game project but outside the folder the editor's asset watcher scans
+(standard projects: beside `Assets`; GameSDK-style projects where the game
+folder itself is the asset root: beside the game folder), and
 the asset folder only receives complete files: DDS / CGF / MTL and their
 `.cryasset`, each moved in with a single atomic rename; never the TIF
 sources, RC request jsons or half-written files):
@@ -193,7 +195,7 @@ cap) — see the troubleshooting section.
 | `placement.apply_surface_to_selection` | `true` | Assign surface assets to the selection |
 | `fab.status_callback` | `true` | Report import status back to the Fab launcher (TCP `127.0.0.1:launcher.listening_port`); harmless when no launcher is running |
 | `stage_imports` | `true` | Build each asset in a staging folder; move only the finished files (DDS / CGF / MTL + `.cryasset`) into the project when the asset is complete, so Sandbox's asset watcher never sees half-written assets (a common crash cause). With staging on, `texture.delete_tif_after_dds` is moot — TIF sources never enter the asset folder |
-| `stage_dir` | `user` | Where the staging/work folders live: `user` = `<project>/user/QuixelCEBridge` (inside the game project, outside `Assets`), `temp` = the system temp folder, or any absolute path. Leftovers from crashed imports are swept on startup (folders older than 24 h) |
+| `stage_dir` | `user` | Where the staging/work folders live: `user` = `<project>/user/QuixelCEBridge` (inside the game project but outside the scanned asset folder — standard projects: beside `Assets`; GameSDK-style projects: beside the game folder, since the game folder itself is the asset root), `temp` = the system temp folder, or any absolute path. Folder names are kept short (Windows caps Sandbox at 259-character paths) and leftovers from crashed imports are swept on startup (folders older than 24 h) |
 | `keep_work_files` | `false` | Debug: keep texproc/converter intermediates (includes the staging folder) |
 
 ## 7. Troubleshooting
@@ -211,6 +213,15 @@ cap) — see the troubleshooting section.
   in place). If a re-import reports `could not move ... into the asset
   folder`, the old file is open in the editor — close the asset browser /
   unload the level and re-import.
+* **Import fails with `converter reported success but its request file
+  is missing`**: the converter wrote its request JSON but Python inside
+  Sandbox could not see it — the path was too close to the Windows 259-char
+  limit (Sandbox.exe is not longPathAware) and/or Sandbox's asset watcher
+  scanned the work folder (GameSDK-style projects put the game folder itself
+  on the watcher's list; v1.2.2 keeps work names short and never stages
+  inside the scanned folder). Antivirus can also intercept freshly-written
+  files in unusual folders — exclude the project or set `stage_dir` to a
+  plain folder elsewhere.
 * **rc.exe NOT FOUND**: set `rc_exe` explicitly in config.
 * **texproc.exe NOT FOUND**: make sure `bin\` is still inside the plugin folder.
 * **assets root NOT FOUND / path points into the engine folder**: CE 5.7's

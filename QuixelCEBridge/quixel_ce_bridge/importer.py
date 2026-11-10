@@ -137,21 +137,42 @@ def _mesh_sub_index(mesh, count):
     return index if isinstance(index, int) and 0 <= index < count else 0
 
 
+def _safe_id(name, limit=16):
+    """Filesystem-safe, short work-folder prefix from an asset id."""
+    safe = "".join(ch if (ch.isalnum() or ch in "._-") else "_" for ch in str(name)[:limit])
+    return safe or "asset"
+
+
 def stage_base(settings, assets_root):
     """Where the per-import work folders (staging + intermediates) live.
 
     stage_dir setting:
       "user" (default) -> <project>/user/QuixelCEBridge - inside the game
-                          project but outside Assets, so the editor's asset
-                          watcher never scans it
+                          project but outside the folder the editor's asset
+                          watcher scans, so half-finished files never reach it
       "temp"           -> the system temp folder
       absolute path    -> exactly there (any relative path is taken relative
                           to the project root)
     Returns "" for the system temp folder.
+
+    The project root is chosen so staging is never INSIDE the scanned asset
+    folder: "<proj>/Assets" -> "<proj>"; a folder that is the engine's game
+    folder (reported by scene.game_folder - GameSDK-style projects where the
+    whole game folder is the asset root) -> its parent, so user/ sits beside
+    it; anything else (a custom output root) -> unchanged.
     """
     value = (settings.get("stage_dir") or "user").strip()
     root = os.path.normpath(assets_root or "")
-    project = os.path.dirname(root) if os.path.basename(root).lower() == "assets" else root
+    engine_root = (settings.get("_runtime.game_folder") or "").strip()
+    game_root = bool(settings.get("_runtime.game_root")) or (
+        bool(root and engine_root) and
+        os.path.normcase(os.path.normpath(engine_root)) == os.path.normcase(root))
+    if not root:
+        project = ""
+    elif os.path.basename(root).lower() == "assets" or game_root:
+        project = os.path.dirname(root)
+    else:
+        project = root
     if not value or value.lower() == "user":
         return os.path.join(project, "user", "QuixelCEBridge") if project else ""
     if value.lower() == "temp":
@@ -192,16 +213,17 @@ def import_asset(asset, settings, assets_root, progress=None):
     result = ImportResult(asset)
     progress = progress or (lambda text: None)
     base = stage_base(settings, assets_root)
+    prefix = "qceb_%s_" % _safe_id(asset.id)
     try:
         if base:
             os.makedirs(base, exist_ok=True)
-            work_dir = tempfile.mkdtemp(prefix="qceb_%s_" % asset.id, dir=base)
+            work_dir = tempfile.mkdtemp(prefix=prefix, dir=base)
         else:
-            work_dir = tempfile.mkdtemp(prefix="qceb_%s_" % asset.id)
+            work_dir = tempfile.mkdtemp(prefix=prefix)
     except OSError as error:
         logger.warning("staging folder %s unavailable (%s); using the system temp folder"
                        % (base or "", error))
-        work_dir = tempfile.mkdtemp(prefix="qceb_%s_" % asset.id)
+        work_dir = tempfile.mkdtemp(prefix=prefix)
     try:
         _import(asset, settings, assets_root, result, work_dir, progress)
         result.ok = not result.errors

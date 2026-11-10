@@ -209,6 +209,25 @@ def main():
         check("multimat request sub indexes",
               subs.get(base + "_var1.json") == [0] and subs.get(base + "_var2.json") == [1], subs)
 
+    # --- work folder names stay short (Windows caps Sandbox at 259-char paths)
+    long_paths, bad_names = [], []
+    for work in glob.glob(os.path.join(base, "qceb_*")):
+        if not os.path.isdir(work):
+            continue
+        if len(os.path.basename(work)) > 24:
+            bad_names.append(os.path.basename(work))
+        for sub in glob.glob(os.path.join(work, "conv_*")):
+            if len(os.path.basename(sub)) > 30:
+                bad_names.append(os.path.basename(sub))
+        for path, _dirs, files in os.walk(work):
+            for name in files:
+                if len(os.path.join(path, name)) > 230:
+                    long_paths.append(name)
+    check("work paths short", not long_paths and not bad_names, (long_paths, bad_names))
+    stale_fixed = [p for p in glob.glob(os.path.join(base, "qceb_*", "*_fixed.fbx"))
+                   if os.path.basename(p) != "mesh_fixed.fbx"]
+    check("repair output short name", not stale_fixed, stale_fixed)
+
     print()
     failed = [name for name, ok, detail in CHECKS if not ok]
     if failed:

@@ -15,6 +15,8 @@ sys.path.insert(0, os.path.join(HERE, "..", "QuixelCEBridge"))
 
 from quixel_ce_bridge.bridge_payload import parse_payload
 from quixel_ce_bridge.server import BridgeServer
+from quixel_ce_bridge.importer import stage_base, _safe_id
+from quixel_ce_bridge.geometry_pipeline import _conv_name
 
 FAILURES = []
 
@@ -293,6 +295,36 @@ def test_server_fab_port_taken():
         blocker.close()
 
 
+def test_stage_base():
+    """Staging must never sit inside the folder the editor's watcher scans."""
+    root = "R:/somewhere/proj"
+    # standard template project: <proj>/Assets -> user beside Assets
+    check("stage default beside Assets",
+          stage_base({}, root + "/Assets").replace("\\", "/") == root + "/user/QuixelCEBridge",
+          stage_base({}, root + "/Assets"))
+    # GameSDK-style: assets root IS the game folder -> user beside it
+    check("stage beside game folder (flag)",
+          stage_base({"_runtime.game_root": True}, root + "/5.7.1/GameSDK").replace("\\", "/")
+          == root + "/5.7.1/user/QuixelCEBridge")
+    check("stage beside game folder (engine string)",
+          stage_base({"_runtime.game_folder": root.lower() + "/5.7.1/gamesdk"},
+                     root + "/5.7.1/GameSDK").replace("\\", "/")
+          == root + "/5.7.1/user/QuixelCEBridge")
+    # custom output root: unchanged (staging inside it)
+    check("stage inside custom root",
+          stage_base({}, root + "/out").replace("\\", "/") == root + "/out/user/QuixelCEBridge")
+    check("stage temp", stage_base({"stage_dir": "temp"}, root + "/Assets") == "")
+    check("stage absolute",
+          stage_base({"stage_dir": "D:/q"}, root + "/Assets") == "D:/q")
+    # short work names keep every path well under the 259-char Windows limit
+    long_stem = "desert_western_cliff_layered_xl_23639c4c_ca70_49f1_b462_afaa454252b2"
+    conv = _conv_name(long_stem)
+    check("conv dir short + unique",
+          len(conv) <= 30 and conv == _conv_name(long_stem) and conv != _conv_name(long_stem + "_var2"),
+          conv)
+    check("safe id short", len(_safe_id("23639c4c-ca70-49f1-b462-afaa454252b2")) <= 16)
+
+
 def main():
     test_fab_rock()
     test_fab_multimat()
@@ -303,6 +335,7 @@ def main():
     test_old_formats_regress()
     test_server_protocol()
     test_server_fab_port_taken()
+    test_stage_base()
     print()
     if FAILURES:
         print("FAILED: %d test(s): %s" % (len(FAILURES), ", ".join(FAILURES)))

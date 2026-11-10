@@ -16,5 +16,5 @@ Package layout
     controller              queues, worker thread, main-thread pump
     ui                      PySide2 tool panel
 """
-VERSION = "1.2.1"
+VERSION = "1.2.2"
 PLUGIN_NAME = "QuixelCEBridge"
