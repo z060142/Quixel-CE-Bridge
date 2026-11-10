@@ -9,6 +9,13 @@ Output layout (all under <assets_root>/<output_subdir>/<type>/<name_id>/):
     <name_id>.cgf, <name_id>_lod1.cgf ...                         single variation
     <name_id>_var2.cgf, <name_id>_var2_lod1.cgf ...               more variations
 
+With "stage_imports" (default on) everything above is first built in a
+staging folder under the temp work dir; when the whole asset is done only
+the final files (.dds / .cgf / .mtl + their .cryasset) are moved into the
+project. TIF sources and RC request jsons never touch the asset folder,
+and each file is copied to '<name>.qcebtmp' then renamed in place, so
+Sandbox's asset watcher never sees a half-written file.
+
 The returned ImportResult is consumed on the main thread by scene.py.
 """
 import os
@@ -42,6 +49,56 @@ class ImportResult(object):
 
 TYPE_FOLDERS = {"3d": "3d", "3dplant": "3dplant", "surface": "surfaces", "atlas": "atlases",
                 "decal": "decals", "brush": "brushes", "displacement": "displacements"}
+
+# What counts as a finished asset; everything else (TIF sources, RC request
+# jsons, texproc settings) stays in the staging folder.
+FINAL_EXTENSIONS = (".dds", ".cgf", ".mtl", ".cryasset")
+TMP_SUFFIX = ".qcebtmp"
+
+
+def publish_stage(stage_dir, dest_dir, keep_tif=False):
+    """Move the final files of one asset from `stage_dir` into `dest_dir`.
+
+    Two-phase move: first every file is copied to '<dest>/<name>.qcebtmp'
+    (an extension Sandbox's asset watcher ignores), then all of them are
+    renamed in place - each rename is atomic, so the project never contains
+    a half-written asset file. Returns (moved count, [(name, error)]).
+    Raises ToolError when the copy phase already failed, in which case no
+    destination file has been touched.
+    """
+    extensions = FINAL_EXTENSIONS + ((".tif",) if keep_tif else ())
+    plan = []
+    for root, _dirs, files in os.walk(stage_dir):
+        rel_root = os.path.relpath(root, stage_dir)
+        for name in sorted(files):
+            if not name.lower().endswith(extensions):
+                continue
+            rel = name if rel_root == "." else os.path.join(rel_root, name)
+            plan.append((os.path.join(root, name), os.path.join(dest_dir, rel)))
+    copies = []
+    try:
+        for src, dst in plan:
+            parent = os.path.dirname(dst)
+            if parent and not os.path.isdir(parent):
+                os.makedirs(parent)
+            tmp = dst + TMP_SUFFIX
+            shutil.copy2(src, tmp)
+            copies.append((tmp, dst))
+    except Exception as error:  # noqa - destination untouched, nothing renamed yet
+        for tmp, _dst in copies:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+        raise ToolError("could not copy %s into %s: %s"
+                        % (getattr(error, "filename", None) or "files", dest_dir, error))
+    failures = []
+    for tmp, dst in copies:
+        try:
+            os.replace(tmp, dst)
+        except OSError as error:
+            failures.append((os.path.basename(dst), str(error)))
+    return len(copies) - len(failures), failures
 
 
 def _kind_for(asset):
@@ -90,7 +147,24 @@ def _import(asset, settings, assets_root, result, work_dir, progress):
     folder = ensure_dir(os.path.join(assets_root, sub, TYPE_FOLDERS.get(asset.type, asset.type or "misc"), asset.safe_base))
     result.folder = folder
     base = asset.safe_base
-    logger.info("=== %s -> %s" % (asset.summary(), folder))
+
+    # Build in a staging folder first; publish only the final files at the end
+    # so half-written assets never appear inside the project.
+    stage = ensure_dir(os.path.join(work_dir, "stage")) if settings.get("stage_imports", True) else None
+    out_dir = stage or folder
+
+    def publish():
+        if out_dir == folder:
+            return
+        keep_tif = not settings.get("texture.generate_dds", True) or not rc
+        moved, failures = publish_stage(out_dir, folder, keep_tif=keep_tif)
+        logger.info("  published %d file(s) into the project (%s)" % (moved, os.path.basename(folder)))
+        for name, why in failures:
+            result.errors.append("could not move %s into the asset folder (close Sandbox's asset "
+                                 "browser or free the file and re-import): %s" % (name, why))
+
+    logger.info("=== %s -> %s%s" % (asset.summary(), folder,
+                                 " (staged)" if stage else ""))
 
     rc = None
     rc_exe = settings.get("_runtime.rc_exe")
@@ -118,7 +192,7 @@ def _import(asset, settings, assets_root, result, work_dir, progress):
         result.warnings.append("%d additional texture(s) skipped" % len(extra_files["textures"]))
 
     progress("%s: textures" % asset.display_name)
-    main_set = process_texture_set(maps_for_kind(asset.textures), asset.workflow, base, folder, work_dir, settings,
+    main_set = process_texture_set(maps_for_kind(asset.textures), asset.workflow, base, out_dir, work_dir, settings,
                                    is_plant=asset.is_plant, rc=rc, alpha_test=True,
                                    flip_green=getattr(asset, "normal_flip_green", None))
     result.warnings.extend(main_set.errors)
@@ -129,7 +203,7 @@ def _import(asset, settings, assets_root, result, work_dir, progress):
         sub_base = "%s_m%d" % (base, index + 2)
         progress("%s: material %s" % (asset.display_name, mat.get("name") or sub_base))
         mat_set = process_texture_set(maps_for_kind(mat.get("textures") or {}), asset.workflow, sub_base,
-                                       folder, work_dir, settings, is_plant=asset.is_plant, rc=rc,
+                                       out_dir, work_dir, settings, is_plant=asset.is_plant, rc=rc,
                                        alpha_test=True, flip_green=mat.get("flip"))
         result.warnings.extend(mat_set.errors)
         extra_sets.append((mat, mat_set))
@@ -141,24 +215,23 @@ def _import(asset, settings, assets_root, result, work_dir, progress):
     if needs_billboard:
         progress("%s: billboard textures" % asset.display_name)
         billboard_set = process_texture_set(asset.billboard_textures, asset.workflow, base + "_billboard",
-                                            folder, work_dir, settings, is_plant=True, rc=rc, alpha_test=True)
+                                            out_dir, work_dir, settings, is_plant=True, rc=rc, alpha_test=True)
         result.warnings.extend(billboard_set.errors)
 
     # --------------------------------------------------------------- material
     pom = kind == "surface" and bool(settings.get("material.surface_pom", False))
-    materials = [build_material(base, main_set, folder, settings, kind=kind, has_displacement_pom=pom)]
+    materials = [build_material(base, main_set, out_dir, settings, kind=kind, has_displacement_pom=pom)]
     for index, (mat, mat_set) in enumerate(extra_sets):
-        materials.append(build_material("%s_m%d" % (base, index + 2), mat_set, folder, settings,
+        materials.append(build_material("%s_m%d" % (base, index + 2), mat_set, out_dir, settings,
                                         kind=kind, has_displacement_pom=pom))
     if billboard_set is not None and billboard_set.files:
-        materials.append(build_material(base + "_billboard", billboard_set, folder, settings, kind="billboard"))
-    mtl_path = os.path.join(folder, base + ".mtl")
-    # Meshes always get a multi-material: subs = mesh materials (+ billboard last)
-    write_mtl(mtl_path, materials, force_multi=asset.is_3d)
-    result.material_game_path = os.path.splitext(game_relative(mtl_path, assets_root))[0]
-    logger.info("  MTL  %s (%d sub material(s))" % (os.path.basename(mtl_path), len(materials)))
+        materials.append(build_material(base + "_billboard", billboard_set, out_dir, settings, kind="billboard"))
+    write_mtl(os.path.join(out_dir, base + ".mtl"), materials, force_multi=asset.is_3d)
+    result.material_game_path = os.path.splitext(game_relative(os.path.join(folder, base + ".mtl"), assets_root))[0]
+    logger.info("  MTL  %s (%d sub material(s))" % (base + ".mtl", len(materials)))
 
     if not asset.is_3d:
+        publish()
         return
 
     # --------------------------------------------------------------- geometry
@@ -193,7 +266,7 @@ def _import(asset, settings, assets_root, result, work_dir, progress):
             else:
                 sub_index = _mesh_sub_index(mesh, n_mesh_subs)
             try:
-                compile_mesh(mesh, os.path.join(folder, cgf_name), base, sub_index,
+                compile_mesh(mesh, os.path.join(out_dir, cgf_name), base, sub_index,
                              physicalize if lod_number == 0 else "no_collide", work_dir, settings, rc,
                              slot_materials=slot_materials)
             except ToolError as error:
@@ -208,4 +281,6 @@ def _import(asset, settings, assets_root, result, work_dir, progress):
             lod_number += 1
             if lod_number >= 6:
                 break   # CRYENGINE supports LOD0..LOD5 by default
+
+    publish()
 

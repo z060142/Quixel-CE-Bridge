@@ -71,6 +71,10 @@ class BridgePanel(QtWidgets.QWidget):
         self.chk_place = QtWidgets.QCheckBox("Place meshes in front of camera")
         self.chk_sel = QtWidgets.QCheckBox("Surfaces: assign to selection")
         self.chk_pom = QtWidgets.QCheckBox("Surfaces: parallax occlusion mapping")
+        self.chk_stage = QtWidgets.QCheckBox("Stage imports (build in temp, move final files only)")
+        self.chk_stage.setToolTip("Build each asset in a temp folder and move only the finished "
+                                  "files (DDS / CGF / MTL + cryassets) into the project at the end, "
+                                  "so Sandbox never sees half-written assets. Recommended.")
         self.chk_keep = QtWidgets.QCheckBox("Keep work files (debug)")
         form.addRow("Port", self.port)
         form.addRow("Fab port", self.fab_port)
@@ -81,7 +85,7 @@ class BridgePanel(QtWidgets.QWidget):
         form.addRow("Physicalize", self.physicalize)
         form.addRow("Plant shader", self.plant_shader)
         for chk in (self.chk_dds, self.chk_gl, self.chk_ao, self.chk_lods, self.chk_place,
-                    self.chk_sel, self.chk_pom, self.chk_keep):
+                    self.chk_sel, self.chk_pom, self.chk_stage, self.chk_keep):
             form.addRow(chk)
         save = QtWidgets.QPushButton("Save settings")
         save.clicked.connect(self._save)
@@ -128,6 +132,7 @@ class BridgePanel(QtWidgets.QWidget):
         self.chk_place.setChecked(bool(s.get("placement.place_in_level")))
         self.chk_sel.setChecked(bool(s.get("placement.apply_surface_to_selection")))
         self.chk_pom.setChecked(bool(s.get("material.surface_pom")))
+        self.chk_stage.setChecked(bool(s.get("stage_imports", True)))
         self.chk_keep.setChecked(bool(s.get("keep_work_files")))
 
     @staticmethod
@@ -155,6 +160,7 @@ class BridgePanel(QtWidgets.QWidget):
         s.set("placement.place_in_level", self.chk_place.isChecked())
         s.set("placement.apply_surface_to_selection", self.chk_sel.isChecked())
         s.set("material.surface_pom", self.chk_pom.isChecked())
+        s.set("stage_imports", self.chk_stage.isChecked())
         s.set("keep_work_files", self.chk_keep.isChecked())
         s.save()
         logger.info("settings saved to " + s.path)

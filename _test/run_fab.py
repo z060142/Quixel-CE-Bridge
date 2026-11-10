@@ -127,6 +127,18 @@ def main():
 
     results = {r.asset.id: r for r in ctrl.history}
     root = os.path.join(HERE, "gameproject", "Assets", "Objects", "Megascans")
+    temp = os.environ.get("TEMP", "/tmp")
+
+    # --- staging: intermediates stay in the kept work dir, finals in the project
+    def staging(name):
+        for d in sorted(glob.glob(os.path.join(temp, "qceb_%s_*" % name, "stage"))):
+            return d
+        return ""
+    stage_dirs = {name: staging(name) for name in ("fabrock", "fabsurf", "fabmulti")}
+
+    def leftovers(folder):
+        return [n for n in os.listdir(folder) if n.lower().endswith((".tif", ".json"))
+                or n.endswith(".qcebtmp")]
 
     # --- rock
     r = results.get("fabrock")
@@ -142,10 +154,18 @@ def main():
               not os.path.isfile(os.path.join(folder, r.asset.safe_base + "_displ.dds")))
         mtl = open(os.path.join(folder, r.asset.safe_base + ".mtl"), encoding="utf-8").read()
         check("rock mtl multi", "<SubMaterials>" in mtl)
+        check("rock staged: no tif/json in project", not leftovers(folder), leftovers(folder))
+        check("rock staged: cryassets moved",
+              os.path.isfile(os.path.join(folder, r.asset.safe_base + ".mtl.cryasset")) and
+              os.path.isfile(os.path.join(folder, r.asset.safe_base + ".cgf.cryasset")) and
+              os.path.isfile(os.path.join(folder, r.asset.safe_base + "_diff.dds.cryasset")))
+        check("rock staged: intermediates kept in work dir",
+              stage_dirs["fabrock"] != "" and
+              os.path.isfile(os.path.join(stage_dirs["fabrock"], r.asset.safe_base + "_diff.tif")) and
+              os.path.isfile(os.path.join(stage_dirs["fabrock"], r.asset.safe_base + ".json")))
         # normal flip honored: find the kept texproc settings json
         flips = []
-        for settings_path in glob.glob(os.path.join(os.environ.get("TEMP", "/tmp"),
-                                                    "qceb_fabrock_*", "*.texproc.json")):
+        for settings_path in glob.glob(os.path.join(temp, "qceb_fabrock_*", "*.texproc.json")):
             data = json.load(open(settings_path, encoding="utf-8"))
             flips.append(data.get("normal_flip_green"))
         check("rock normal_flip_green true (fab flag)", True in flips, flips)
@@ -159,6 +179,7 @@ def main():
         check("surface dds displ kept", os.path.isfile(os.path.join(folder, r.asset.safe_base + "_displ.dds")))
         mtl = open(os.path.join(folder, r.asset.safe_base + ".mtl"), encoding="utf-8").read()
         check("surface mtl single", "<SubMaterials>" not in mtl and "Heightmap" in mtl)
+        check("surface staged: no tif/json in project", not leftovers(folder), leftovers(folder))
         check("surface no objects", len(r.objects) == 0)
 
     # --- multi material
@@ -174,9 +195,10 @@ def main():
         check("multimat two cgfs",
               os.path.isfile(os.path.join(folder, base + "_var1.cgf")) and
               os.path.isfile(os.path.join(folder, base + "_var2.cgf")))
+        check("multimat staged: no tif/json in project", not leftovers(folder), leftovers(folder))
         # kept RC requests: sub_index per mesh (all slots of a mesh -> its material)
         subs = {}
-        for req in glob.glob(os.path.join(folder, base + "*.json")):
+        for req in glob.glob(os.path.join(stage_dirs["fabmulti"], base + "*.json")):
             data = json.load(open(req, encoding="utf-8"))
             subs[os.path.basename(req)] = sorted(set(m.get("sub_index") for m in data.get("materials", [])))
         check("multimat request sub indexes",

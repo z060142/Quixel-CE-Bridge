@@ -91,6 +91,12 @@ DEFAULTS = {
         "status_callback": True
     },
 
+    # Build each asset in a temp staging folder and move only the final
+    # files (DDS / CGF / MTL + cryassets) into the project when done, so
+    # Sandbox's asset watcher never sees half-written files. Intermediates
+    # (TIF sources, RC request jsons) never enter the asset folder.
+    "stage_imports": True,
+
     # Keep texproc/converter intermediates (groups/settings/request JSON).
     "keep_work_files": False
 }

@@ -118,7 +118,10 @@ payload type, so nothing changes on the CRYENGINE side.
     needed, QTimer runs it automatically)
   * `QuixelCEBridge: Status` — print tool paths / status
 
-What an import produces:
+What an import produces (with `stage_imports`, on by default, everything is
+built in a temp staging folder first — the project folder only receives
+complete files: DDS / CGF / MTL and their `.cryasset` — never the TIF
+sources, RC request jsons or half-written files):
 * Textures (explicitly compiled with RC presets, not the automatic preset):
   `_diff.dds` (AlbedoWithCoverage, plants carry coverage alpha)
   `_ddna.dds` (NormalsWithSmoothness, roughness baked into alpha)
@@ -186,7 +189,8 @@ cap) — see the troubleshooting section.
 | `placement.spawn_distance` | `3.0` | metres |
 | `placement.apply_surface_to_selection` | `true` | Assign surface assets to the selection |
 | `fab.status_callback` | `true` | Report import status back to the Fab launcher (TCP `127.0.0.1:launcher.listening_port`); harmless when no launcher is running |
-| `keep_work_files` | `false` | Debug: keep texproc/converter intermediates |
+| `stage_imports` | `true` | Build each asset in a temp staging folder; move only the finished files (DDS / CGF / MTL + `.cryasset`) into the project when the asset is complete, so Sandbox's asset watcher never sees half-written assets (a common crash cause). With staging on, `texture.delete_tif_after_dds` is moot — TIF sources never enter the asset folder |
+| `keep_work_files` | `false` | Debug: keep texproc/converter intermediates (includes the staging folder) |
 
 ## 7. Troubleshooting
 
@@ -196,6 +200,13 @@ cap) — see the troubleshooting section.
   fighting for the same port. A busy `fab_port` (31337) is only a warning —
   the Bridge port keeps working; point Fab's socket export at `port`
   instead.
+* **Sandbox crashed / assets appeared broken mid-import**: make sure
+  `stage_imports` is `true` (default) — it keeps all intermediate writes
+  out of the project folder. With staging on, a file only appears in the
+  project once it is complete (copied to `<name>.qcebtmp`, then renamed
+  in place). If a re-import reports `could not move ... into the asset
+  folder`, the old file is open in the editor — close the asset browser /
+  unload the level and re-import.
 * **rc.exe NOT FOUND**: set `rc_exe` explicitly in config.
 * **texproc.exe NOT FOUND**: make sure `bin\` is still inside the plugin folder.
 * **assets root NOT FOUND / path points into the engine folder**: CE 5.7's
