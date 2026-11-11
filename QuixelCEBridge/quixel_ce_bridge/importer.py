@@ -22,16 +22,18 @@ half-written file.
 The returned ImportResult is consumed on the main thread by scene.py.
 """
 import os
+import re
 import shutil
 import tempfile
 import time
 import traceback
+from xml.sax.saxutils import escape
 
 from . import logger
 from .external import ResourceCompiler, ToolError
 from .geometry_pipeline import compile_mesh
 from .mtl_writer import build_material, write_mtl
-from .paths import ensure_dir, game_relative
+from .paths import ensure_dir, game_relative, is_uuid
 from .texture_pipeline import process_texture_set
 
 
@@ -119,6 +121,60 @@ def publish_stage(stage_dir, dest_dir, keep_tif=False):
         except OSError as error:
             failures.append((os.path.basename(dst), str(error)))
     return len(copies) - len(failures), failures
+
+
+_QUIXEL_ID = re.compile(r'<Detail name="quixelId">([^<]*)</Detail>')
+
+
+def annotate_cryassets(folder, asset):
+    """Record the asset's original id / name in the <Details> of its .mtl / .cgf .cryasset files.
+
+    Fab UUIDs are kept out of file names (MAX_PATH), so this is where the
+    original identity lives; the Asset Browser shows these as asset details.
+    """
+    pairs = (("quixelId", asset.id), ("quixelName", asset.display_name),
+             ("quixelType", getattr(asset, "type", "")), ("quixelWorkflow", getattr(asset, "workflow", "")))
+    block = "".join('  <Detail name="%s">%s</Detail>\n' % (key, escape(str(value))) for key, value in pairs if value)
+    if not block:
+        return
+    for root, _dirs, files in os.walk(folder):
+        for name in files:
+            if not name.lower().endswith((".mtl.cryasset", ".cgf.cryasset")):
+                continue
+            path = os.path.join(root, name)
+            try:
+                with open(path, encoding="utf-8", newline="") as handle:
+                    text = handle.read()
+                if 'name="quixelId"' in text:
+                    continue
+                if " </Details>" in text:
+                    text = text.replace(" </Details>", block + " </Details>", 1)
+                else:
+                    text = text.replace("</AssetMetadata>", " <Details>\n" + block + " </Details>\n</AssetMetadata>", 1)
+                with open(path, "w", encoding="utf-8", newline="") as handle:
+                    handle.write(text)
+            except (OSError, UnicodeError) as error:
+                logger.warning("cannot annotate %s: %s" % (name, error))
+
+
+def _unique_base(asset, assets_root, sub):
+    """asset.safe_base, or safe_base_2 / _3 ... when that folder holds a DIFFERENT asset.
+
+    Without the UUID in the name two Fab assets with the same title would
+    overwrite each other. The owner is read from the quixelId written by
+    annotate_cryassets(); folders without one (older imports) are reused.
+    """
+    root = os.path.join(assets_root, sub, TYPE_FOLDERS.get(asset.type, asset.type or "misc"))
+    for number in range(1, 100):
+        candidate = asset.safe_base if number == 1 else "%s_%d" % (asset.safe_base, number)
+        try:
+            with open(os.path.join(root, candidate, candidate + ".mtl.cryasset"), encoding="utf-8") as handle:
+                owner = _QUIXEL_ID.search(handle.read())
+        except (OSError, UnicodeError):
+            return candidate
+        if not owner or owner.group(1) == asset.id:
+            return candidate
+    return asset.safe_base
 
 
 def _kind_for(asset):
@@ -245,9 +301,9 @@ def import_asset(asset, settings, assets_root, progress=None):
 def _import(asset, settings, assets_root, result, work_dir, progress):
     kind = _kind_for(asset)
     sub = (settings.get("output_subdir") or "Objects/Megascans").strip("/\\")
-    folder = ensure_dir(os.path.join(assets_root, sub, TYPE_FOLDERS.get(asset.type, asset.type or "misc"), asset.safe_base))
+    base = _unique_base(asset, assets_root, sub)
+    folder = ensure_dir(os.path.join(assets_root, sub, TYPE_FOLDERS.get(asset.type, asset.type or "misc"), base))
     result.folder = folder
-    base = asset.safe_base
 
     # Build in a staging folder first; publish only the final files at the end
     # so half-written assets never appear inside the project.
@@ -255,6 +311,7 @@ def _import(asset, settings, assets_root, result, work_dir, progress):
     out_dir = stage or folder
 
     def publish():
+        annotate_cryassets(out_dir, asset)
         if out_dir == folder:
             return
         keep_tif = not settings.get("texture.generate_dds", True) or not rc
@@ -377,7 +434,9 @@ def _import(asset, settings, assets_root, result, work_dir, progress):
                 logger.warning("LOD skipped: %s" % error)
                 break
             if lod_number == 0:
-                result.objects.append(("%s_%s" % (asset.display_name.replace(" ", "_"), var_index if multi_var else asset.id),
+                label = var_index if multi_var else ("" if is_uuid(asset.id) else asset.id)
+                result.objects.append(("%s_%s" % (asset.display_name.replace(" ", "_"), label) if label != ""
+                                       else asset.display_name.replace(" ", "_"),
                                        game_relative(os.path.join(folder, cgf_name), assets_root)))
             lod_number += 1
             if lod_number >= 6:

@@ -26,7 +26,7 @@ import json
 import os
 import re
 
-from .paths import safe_name
+from .paths import asset_base_name, safe_name
 
 MESH_FORMATS = ("fbx",)
 
@@ -183,10 +183,7 @@ class MegascansAsset(object):
 
         name = data.get("name") or os.path.basename(self.path or "") or self.id
         self.display_name = name
-        name = name.replace(" ", "_")
-        if len(name.split("_")) > 2:
-            name = "_".join(name.split("_")[:-1])
-        self.safe_base = safe_name("%s_%s" % (name, self.id))
+        self.safe_base = asset_base_name(name, self.id)
 
         self.textures = self._parse_textures(data.get("components", []) or [])
         self.billboard_textures = self._parse_textures(data.get("components-billboard", []) or [])
@@ -432,10 +429,7 @@ def _asset_from_metadata(item, base_folder):
     asset.id = str(item.get("id", "")).strip() or "noid"
     name = tags_info.get("name") or name_formats.get("title") or name_formats.get("file") or asset.id
     asset.display_name = name
-    token = name.replace(" ", "_")
-    if len(token.split("_")) > 2:
-        token = "_".join(token.split("_")[:-1])
-    asset.safe_base = safe_name("%s_%s" % (token, asset.id))
+    asset.safe_base = asset_base_name(name, asset.id)
 
     asset.type = _metadata_asset_type(item, tags_info)
     asset.path = base_folder or ""
@@ -603,10 +597,7 @@ def _asset_from_fab(item, base_folder=None):
 
     name = str(quixel.get("name", "") or listing.get("title", "") or "").strip() or asset.id
     asset.display_name = name
-    token = name.replace(" ", "_")
-    if len(token.split("_")) > 2:
-        token = "_".join(token.split("_")[:-1])
-    asset.safe_base = safe_name("%s_%s" % (token, asset.id))
+    asset.safe_base = asset_base_name(name, asset.id)
 
     asset.type = _fab_asset_type(item, quixel, fab)
     asset.path = str(item.get("path", "") or "")

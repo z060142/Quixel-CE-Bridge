@@ -62,6 +62,37 @@ def safe_name(text, fallback="asset"):
     return text or fallback
 
 
+_UUID = re.compile(r"[0-9a-f]{8}(_[0-9a-f]{4}){3}_[0-9a-f]{12}")
+
+# The asset name appears twice in every output path (<folder>/<name>_<map>.dds.cryasset), and
+# Sandbox.exe is not long-path aware (MAX_PATH 260), so the name must stay short.
+MAX_BASE_NAME = 64
+
+
+def is_uuid(text):
+    return bool(_UUID.fullmatch(safe_name(text or "", "")))
+
+
+def asset_base_name(name, asset_id, limit=MAX_BASE_NAME):
+    """Folder / file stem of an imported asset, at most `limit` chars.
+
+    Megascans names look like 'Mossy Rock wlpmfhhaw': the last word is dropped
+    and the short id appended ('mossy_rock_wlpmfhhaw'). Fab assets carry a
+    UUID id: it never goes into the name (too long, MAX_PATH), and the last
+    word is kept because it is a variant number ('... Hard 01' / '... Hard 02').
+    The original id and name are stored in the .cryasset files (see importer).
+    """
+    token = (name or "").strip().replace(" ", "_")
+    if is_uuid(asset_id):
+        stem = safe_name(token, "") if not is_uuid(token) else ""
+        return safe_name(stem[:limit], "asset_" + safe_name(asset_id)[:8])
+    if len(token.split("_")) > 2:
+        token = "_".join(token.split("_")[:-1])
+    ident = safe_name(asset_id)
+    room = max(limit - len(ident) - 1, 8)
+    return safe_name("%s_%s" % (safe_name(token)[:room], ident))
+
+
 def game_relative(path, assets_root):
     """Absolute path -> lowercase game path with forward slashes."""
     rel = os.path.relpath(os.path.abspath(path), os.path.abspath(assets_root))
