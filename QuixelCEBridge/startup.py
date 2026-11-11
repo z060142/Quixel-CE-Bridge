@@ -1,77 +1,79 @@
 # -*- coding: utf-8 -*-
-"""QuixelCEBridge - CRYENGINE 5.7 Sandbox plugin entry point.
+"""QuixelCEBridge - CRYENGINE 5.7 Sandbox plugin entry point (CrythonNative).
 
-Install: copy this folder to <engine>/Editor/Python/plugins/QuixelCEBridge/
-Sandbox runs this file with PyRun_SimpleFile in the shared __main__ namespace,
-so everything lives inside a function and only one private name is left behind.
+Install: put this folder under a CrythonNative plugin directory, i.e. one of
+  <engine>/Editor/Python/crython_plugins/QuixelCEBridge/
+  <project>/Editor/Python/crython_plugins/QuixelCEBridge/
+  or any folder listed in the CRYTHON_PLUGIN_PATH environment variable (';' separated;
+  point it at the folder that CONTAINS QuixelCEBridge).
+CrythonNative runs this file in its own namespace with a correct __file__.
 """
+import os
+import sys
+import traceback
+
+import CrythonNative as cn
+
+here = os.path.dirname(os.path.abspath(__file__))
+if here not in sys.path:
+    sys.path.insert(0, here)
 
 
-def _quixel_ce_bridge_startup():
-    import os
-    import sys
-    import traceback
+def _pick_and_import(ctrl):
+    """Import a Bridge export JSON or a Quixel .zip download without the socket."""
+    from PySide2.QtWidgets import QFileDialog
+    path, _filter = QFileDialog.getOpenFileName(
+        None, "QuixelCEBridge: Import Bridge JSON / Quixel zip", "",
+        "Bridge export (*.json *.zip);;All files (*)")
+    if path:
+        ctrl.submit_file(path)
 
-    # Sandbox runs this via "general.run_file", which sets argv[0]; __file__ in
-    # the shared __main__ namespace may belong to another script.
-    here = None
-    for candidate in (sys.argv[0] if sys.argv else "", globals().get("__file__", "")):
-        folder = os.path.dirname(os.path.abspath(candidate)) if candidate else ""
-        if folder and os.path.isdir(os.path.join(folder, "quixel_ce_bridge")):
-            here = folder
-            break
-    if here is None:
-        sys.stderr.write("[QuixelCEBridge] cannot locate plugin folder\n")
-        return
-    if here not in sys.path:
-        sys.path.insert(0, here)
+
+def _status(ctrl, logger):
+    for key, value in ctrl.diagnostics().items():
+        logger.info("%-14s %s" % (key, value))
+    logger.info("status: %s, pending: %d" % (ctrl.status, ctrl.pending))
+
+
+def _pending(ctrl, logger):
+    ctrl.pump()   # finish queued imports now
+    logger.info("pending jobs: %d" % ctrl.pending)
+
+
+def _startup():
+    from quixel_ce_bridge import PLUGIN_NAME, VERSION, logger, controller
+    logger.set_log_file(os.path.join(here, "quixel_ce_bridge.log"))
+    logger.info("%s %s loading from %s" % (PLUGIN_NAME, VERSION, here))
+
+    ctrl = controller.get()
+    ctrl.start_pump()
+
+    # Editor commands: Tools > Custom Commands, bindable to shortcuts as crython.<id>
+    for command_id, label, fn in (
+        ("quixel_start", "QuixelCEBridge: Start Listening", ctrl.start_server),
+        ("quixel_stop", "QuixelCEBridge: Stop Listening", ctrl.stop_server),
+        ("quixel_import_json", "QuixelCEBridge: Import Bridge JSON", lambda: _pick_and_import(ctrl)),
+        ("quixel_process_pending", "QuixelCEBridge: Process Pending", lambda: _pending(ctrl, logger)),
+        ("quixel_status", "QuixelCEBridge: Status", lambda: _status(ctrl, logger)),
+    ):
+        try:
+            cn.editor.register_command(command_id, fn, label=label)
+        except Exception as error:  # noqa
+            logger.warning("command %s not registered: %s" % (command_id, error))
 
     try:
-        from quixel_ce_bridge import PLUGIN_NAME, VERSION, logger, controller
-        logger.set_log_file(os.path.join(here, "quixel_ce_bridge.log"))
-        logger.info("%s %s loading from %s" % (PLUGIN_NAME, VERSION, here))
+        from quixel_ce_bridge import ui
+        ui.register()
+    except Exception as error:  # noqa
+        logger.warning("UI panel unavailable (%s); use the custom commands instead" % error)
 
-        ctrl = controller.get()
-        ctrl.start_pump()
-
-        try:
-            import sandbox
-            from quixel_ce_bridge.sandbox_api import group
-            keybind = group("keybind")
-            if keybind is None:
-                logger.warning("sandbox.keybind is unavailable")
-            else:
-                scripts = os.path.join(here, "scripts")
-                for ui_name, script in (
-                    ("QuixelCEBridge: Start Listening", "start_listening.py"),
-                    ("QuixelCEBridge: Stop Listening", "stop_listening.py"),
-                    ("QuixelCEBridge: Import Bridge JSON", "import_json.py"),
-                    ("QuixelCEBridge: Process Pending", "process_pending.py"),
-                    ("QuixelCEBridge: Status", "status.py"),
-                ):
-                    path = os.path.join(scripts, script).replace("\\", "/")
-                    keybind.add_custom_command(ui_name, "general.run_file '%s'" % path, "")
-        except Exception as error:  # noqa
-            logger.warning("custom commands not registered: %s" % error)
-
-        try:
-            from quixel_ce_bridge import ui
-            ui.register()
-        except Exception as error:  # noqa
-            logger.warning("UI panel unavailable (%s); use the custom commands instead" % error)
-
-        if ctrl.settings.get("auto_start", True):
-            ctrl.start_server()
-        for key, value in ctrl.diagnostics().items():
-            logger.info("  %-14s %s" % (key, value))
-
-        # Log which sandbox command groups this build actually exposes.
-        from quixel_ce_bridge.sandbox_api import group
-        groups = [n for n in ("general", "object", "selection", "keybind", "material")
-                  if group(n) is not None]
-        logger.info("sandbox groups: %s" % (", ".join(groups) or "none"))
-    except Exception:  # noqa
-        sys.stderr.write("[QuixelCEBridge] start-up failed:\n" + traceback.format_exc())
+    if ctrl.settings.get("auto_start", True):
+        ctrl.start_server()
+    for key, value in ctrl.diagnostics().items():
+        logger.info("  %-14s %s" % (key, value))
 
 
-_quixel_ce_bridge_startup()
+try:
+    _startup()
+except Exception:  # noqa
+    sys.stderr.write("[QuixelCEBridge] start-up failed:\n" + traceback.format_exc())

@@ -19,7 +19,7 @@ DEFAULTS = {
 
     # --- Paths (empty = auto-detect) ---
     # Absolute path of the project's asset folder (the folder that contains
-    # Objects/, Textures/ ...). Empty -> sandbox.general.get_game_folder().
+    # Objects/, Textures/ ...). Empty -> CrythonNative system.asset_dir().
     "assets_root": "",
     # Sub folder (relative to assets_root) where imported assets are written.
     "output_subdir": "Objects/Megascans",

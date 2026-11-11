@@ -6,7 +6,7 @@
     worker thread             : importer.import_asset() (texproc/converter/rc)
     main thread pump          : scene.apply_result() (create brushes, materials)
 
-`sandbox.*` is only ever touched from pump(), i.e. the main thread.
+CrythonNative's editor API is only ever touched from pump(), i.e. the main thread.
 """
 import json
 import os
@@ -354,17 +354,13 @@ class Controller(object):
             pass   # launcher not listening: fine outside the Fab app
 
     def start_pump(self):
-        """Install a QTimer on the main thread. Returns True on success."""
-        try:
-            from PySide2.QtCore import QTimer
-        except ImportError:
-            logger.warning("PySide2 unavailable: run 'QuixelCEBridge: Process pending' to finish imports")
+        """Run pump() every 250 ms on the main thread (CrythonNative timer). Returns True on success."""
+        if not scene.available():
+            logger.warning("CrythonNative unavailable: run 'QuixelCEBridge: Process Pending' to finish imports")
             return False
         if self._timer is None:
-            self._timer = QTimer()
-            self._timer.setInterval(250)
-            self._timer.timeout.connect(self.pump)
-        self._timer.start()
+            import CrythonNative as cn
+            self._timer = cn.call_every(0.25, self.pump)   # pump() returns None -> keeps running
         return True
 
     # --------------------------------------------------------------- listeners

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Thread-safe logging.
 
-sandbox.general.log() may only be called from the main thread, so worker
+the editor API may only be called from the main thread, so worker
 threads write to sys.stdout / sys.stderr (Sandbox redirects both into the
 Console) and into an in-memory ring buffer the UI panel polls.
 """

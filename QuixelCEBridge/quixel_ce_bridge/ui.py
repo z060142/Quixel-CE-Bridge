@@ -48,7 +48,7 @@ class BridgePanel(QtWidgets.QWidget):
         self.fab_port.setRange(0, 65535)
         self.fab_port.setSpecialValueText("off (port only)")
         self.assets_root = QtWidgets.QLineEdit()
-        self.assets_root.setPlaceholderText("auto: sandbox.general.get_game_folder()")
+        self.assets_root.setPlaceholderText("auto: CrythonNative system.asset_dir()")
         browse = QtWidgets.QPushButton("...")
         browse.setFixedWidth(28)
         browse.clicked.connect(self._browse_root)
